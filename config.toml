@@ -4,6 +4,7 @@ source = "source"
 wav_master = "wav_master"
 diarization = "diarization"
 reference_bank = "reference_bank"
+training_audio = "training_audio"
 rvc_dataset = "rvc_dataset"
 runs = "runs"
 
