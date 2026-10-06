@@ -317,8 +317,13 @@ def classify(
     for path in destinations.values():
         path.mkdir(parents=True, exist_ok=True)
 
-    # Manual acceptance staging area. Nothing is copied here automatically.
-    (output_dir / "review_approved").mkdir(parents=True, exist_ok=True)
+    # Manual review destinations. Nothing is copied here automatically.
+    for dirname in (
+        "review_approved",
+        "review_emotion",
+        "review_rejected",
+    ):
+        (output_dir / dirname).mkdir(parents=True, exist_ok=True)
 
     counts = {key: 0 for key in destinations}
     silent_skipped = 0
@@ -425,7 +430,8 @@ def classify(
     print(f"Run directory: {output_dir}")
     print(
         "Reference bank is not updated automatically. "
-        "Review accepted material before adding it."
+        "Review uncertain clips with scripts/review_training_audio.py "
+        "before collecting training audio."
     )
 
 
