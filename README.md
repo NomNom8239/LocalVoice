@@ -21,7 +21,9 @@ speaker embedding / reference bank
     ↓
 SELF / REVIEW / OTHER classification
     ↓
-confirmed target-speaker audio
+my_voice + manually approved review
+    ↓
+training_audio accumulation / deduplication
     ↓
 RVC dataset QC
     ↓
@@ -39,14 +41,16 @@ LocalVoice/
 │  ├─ diarize.py
 │  ├─ build_reference_bank.py
 │  ├─ calibrate_threshold.py
+│  ├─ collect_training_audio.py
 │  └─ build_rvc_dataset.py
 └─ data/                  # generated/local data; Git 管理外
    ├─ source/
    ├─ wav_master/
    ├─ diarization/
    ├─ reference_bank/
-   ├─ rvc_dataset/
-   └─ runs/
+   ├─ runs/
+   ├─ training_audio/
+   └─ rvc_dataset/
 ```
 
 `data/`、音声ファイル、学習済みモデル、Python 仮想環境は Git に含めません。
@@ -164,12 +168,63 @@ data/runs/<profile>/<run-name>/
 ├─ separated/
 ├─ my_voice/
 ├─ review/
+├─ review_approved/        # 手動採用した review をここへコピー
 ├─ review_unscored/
 ├─ rejected/
 └─ classification.tsv
 ```
 
-reference bank は自動更新しません。誤判定の自己増殖を避けるため、`my_voice/` を確認してから reference audio に追加します。
+reference bank は自動更新しません。誤判定の自己増殖を避けるため、`my_voice/` を reference bank へ自動投入しないでください。
+
+### 学習素材を蓄積
+
+各 run の `my_voice/` と、手動採用して `review_approved/` に置いた WAV を
+`data/training_audio/<destination>/audio/` へ蓄積します。同じ音声は canonical audio fingerprint で重複排除されます。
+
+```powershell
+python .\scripts\collect_training_audio.py `
+  --profile Toto_Kogara `
+  --run archive_001
+```
+
+保存先は既定で profile 名です。別名にする場合:
+
+```powershell
+python .\scripts\collect_training_audio.py `
+  --profile Toto_Kogara `
+  --run archive_001 `
+  --destination Toto_Kogara_main
+```
+
+複数 run は `--run` を繰り返せます。
+
+```powershell
+python .\scripts\collect_training_audio.py `
+  --profile Toto_Kogara `
+  --run archive_001 `
+  --run archive_002
+```
+
+run 外で手動採用した review WAV がある場合は `--approved-review` を追加できます。
+
+```powershell
+python .\scripts\collect_training_audio.py `
+  --profile Toto_Kogara `
+  --run archive_001 `
+  --approved-review ".\path\to\approved_review"
+```
+
+出力:
+
+```text
+data/training_audio/Toto_Kogara/
+├─ audio/
+├─ manifest.tsv
+└─ summary.json
+```
+
+`review/` 自体は自動採用しません。採用するファイルだけを `review_approved/` にコピーしてください。
+先に内容だけ確認する場合は `--dry-run` を使用できます。
 
 ### RVC dataset 作成
 
@@ -178,7 +233,7 @@ reference bank は自動更新しません。誤判定の自己増殖を避け�
 ```powershell
 python .\scripts\build_rvc_dataset.py `
   --profile Toto_Kogara `
-  --source ".\data\reference_bank\Toto_Kogara\audio"
+  --source ".\data\training_audio\Toto_Kogara\audio"
 ```
 
 出力:
@@ -199,6 +254,8 @@ RVC-WebUI には `self/` を dataset path として渡します。
 
 - reference bank には対象話者であることを確認済みの音声だけを入れる。
 - SELF 判定結果を reference bank へ無確認で追加しない。
+- `collect_training_audio.py` は `review/` を自動採用せず、`review_approved/` のみを採用する。
+- training_audio への追加は元ファイルを削除・移動せずコピーで行い、provenance を `manifest.tsv` に残す。
 - RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
 
