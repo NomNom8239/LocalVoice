@@ -253,6 +253,9 @@ def classify(
     for path in destinations.values():
         path.mkdir(parents=True, exist_ok=True)
 
+    # Manual acceptance staging area. Nothing is copied here automatically.
+    (output_dir / "review_approved").mkdir(parents=True, exist_ok=True)
+
     counts = {key: 0 for key in destinations}
     overlap_skipped = 0
     silent_skipped = 0
