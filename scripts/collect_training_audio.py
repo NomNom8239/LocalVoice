@@ -95,6 +95,9 @@ def collect_candidates(
         for path in collect_wavs(run_path / "review_approved"):
             candidates.append((path, "REVIEW_APPROVED", run_name))
 
+        for path in collect_wavs(run_path / "review_emotion"):
+            candidates.append((path, "REVIEW_EMOTION", run_name))
+
     return candidates
 
 
@@ -161,8 +164,9 @@ def main() -> None:
         description=(
             "Collect confirmed target-speaker WAVs from every run for one "
             "profile into data/training_audio/<profile>/audio. "
-            "my_voice is collected automatically; review is collected only "
-            "after manual approval into review_approved."
+            "my_voice is collected automatically; manually approved normal "
+            "and emotional clips are collected from review_approved/ and "
+            "review_emotion/."
         )
     )
     parser.add_argument("--profile", required=True)
@@ -197,8 +201,8 @@ def main() -> None:
     if not candidates:
         raise RuntimeError(
             "Processed runs were found, but no WAV files exist under "
-            "my_voice/ or review_approved/. Check the classification results "
-            "and manually approve review clips when needed."
+            "my_voice/, review_approved/, or review_emotion/. Check the "
+            "classification results and manually review uncertain clips."
         )
 
     destination_root = training_audio_dir(config, destination)
@@ -224,6 +228,7 @@ def main() -> None:
     by_kind = {
         "MY_VOICE": 0,
         "REVIEW_APPROVED": 0,
+        "REVIEW_EMOTION": 0,
     }
 
     print(f"Profile      : {profile}")
@@ -315,6 +320,7 @@ def main() -> None:
                 "added_count": added,
                 "added_my_voice_count": by_kind["MY_VOICE"],
                 "added_review_approved_count": by_kind["REVIEW_APPROVED"],
+                "added_review_emotion_count": by_kind["REVIEW_EMOTION"],
                 "added_duration_sec": added_duration,
                 "duplicate_count": duplicate,
                 "failed_count": failed,
@@ -331,6 +337,7 @@ def main() -> None:
     print(f"ADD       : {added:4d} clips / {added_duration / 60.0:.2f} min")
     print(f"  my_voice        : {by_kind['MY_VOICE']:4d}")
     print(f"  review_approved : {by_kind['REVIEW_APPROVED']:4d}")
+    print(f"  review_emotion  : {by_kind['REVIEW_EMOTION']:4d}")
     print(f"DUPLICATE : {duplicate:4d} clips")
     print(f"FAILED    : {failed:4d} clips")
     if args.dry_run:
