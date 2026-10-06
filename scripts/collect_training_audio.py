@@ -85,7 +85,20 @@ def resolve_run_path(
             path = (run_dir(config, profile) / value).resolve()
 
     if not path.is_dir():
-        raise NotADirectoryError(path)
+        profile_runs = run_dir(config, profile)
+        available = (
+            sorted(p.name for p in profile_runs.iterdir() if p.is_dir())
+            if profile_runs.is_dir()
+            else []
+        )
+        detail = (
+            "\nAvailable runs: " + ", ".join(available)
+            if available
+            else "\nNo runs found under: " + str(profile_runs)
+        )
+        raise NotADirectoryError(
+            f"Run directory not found: {path}{detail}"
+        )
     return path
 
 
