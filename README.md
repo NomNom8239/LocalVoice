@@ -178,50 +178,37 @@ reference bank は自動更新しません。誤判定の自己増殖を避け�
 
 ### 学習素材を蓄積
 
-各 run の `my_voice/` と、手動採用して `review_approved/` に置いた WAV を
-`data/training_audio/<destination>/audio/` へ蓄積します。同じ音声は canonical audio fingerprint で重複排除されます。
+`collect_training_audio.py` には URL や run 名を渡しません。
+`--profile` に対応する `data/runs/<profile>/` 配下の run を自動探索し、各 run の:
 
-新しい `runs/` 構成より前に作った確認済み音声は、`--source` で直接取り込めます。
+- `my_voice/`
+- `review_approved/`
+
+だけを `data/training_audio/<profile>/audio/` へ蓄積します。
+`review/` は自動採用しません。採用する WAV だけを同じ run の
+`review_approved/` へ手動でコピーしてください。
+
+通常実行:
 
 ```powershell
 python .\scripts\collect_training_audio.py `
-  --profile Toto_Kogara `
-  --run archive_001
+  --profile Toto_Kogara
 ```
 
-既存の確認済み音声を初期投入する例:
+先に追加予定だけ確認:
 
 ```powershell
 python .\scripts\collect_training_audio.py `
   --profile Toto_Kogara `
-  --source ".\data\reference_bank\Toto_Kogara\audio"
+  --dry-run
 ```
 
-保存先は既定で profile 名です。別名にする場合:
+保存先は既定で profile 名です。必要な場合だけ別名を指定できます。
 
 ```powershell
 python .\scripts\collect_training_audio.py `
   --profile Toto_Kogara `
-  --run archive_001 `
   --destination Toto_Kogara_main
-```
-
-複数 run は `--run` を繰り返せます。
-
-```powershell
-python .\scripts\collect_training_audio.py `
-  --profile Toto_Kogara `
-  --run archive_001 `
-  --run archive_002
-```
-
-run 外で手動採用した review WAV がある場合は `--approved-review` を追加できます。
-
-```powershell
-python .\scripts\collect_training_audio.py `
-  --profile Toto_Kogara `
-  --run archive_001 `
-  --approved-review ".\path\to\approved_review"
 ```
 
 出力:
@@ -233,8 +220,8 @@ data/training_audio/Toto_Kogara/
 └─ summary.json
 ```
 
-`review/` 自体は自動採用しません。採用するファイルだけを `review_approved/` にコピーしてください。
-先に内容だけ確認する場合は `--dry-run` を使用できます。
+同じ音声はデコード後の音声内容から作る fingerprint で重複排除します。
+元の `runs/` 内の WAV は移動・削除せず、training_audio へコピーします。
 
 ### RVC dataset 作成
 
@@ -264,7 +251,7 @@ RVC-WebUI には `self/` を dataset path として渡します。
 
 - reference bank には対象話者であることを確認済みの音声だけを入れる。
 - SELF 判定結果を reference bank へ無確認で追加しない。
-- `collect_training_audio.py` は `review/` を自動採用せず、`review_approved/` のみを採用する。
+- `collect_training_audio.py` は profile 配下の run を自動探索し、`my_voice/` と `review_approved/` のみを採用する。
 - training_audio への追加は元ファイルを削除・移動せずコピーで行い、provenance を `manifest.tsv` に残す。
 - RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
