@@ -1,0 +1,59 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Environment / local secrets
+.env
+.env.*
+!.env.example
+
+# LocalVoice generated data
+data/
+
+# Legacy/generated working directories
+source/
+wav_master/
+separated/
+speaker_samples/
+voice_reference/
+voice_reference_bank/
+reference bank/
+rvc_dataset/
+runs/
+
+# Audio / video
+*.wav
+*.mp3
+*.flac
+*.m4a
+*.ogg
+*.opus
+*.webm
+*.mp4
+*.mkv
+
+# Voice / ML model artifacts
+*.pth
+*.pt
+*.index
+*.onnx
+*.ckpt
+*.safetensors
+
+# Logs / temporary files
+*.log
+*.tmp
+*.part
