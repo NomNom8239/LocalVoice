@@ -155,6 +155,7 @@ def candidate_sources(
     config: dict,
     profile: str,
     run_values: list[str],
+    source_paths: list[str],
     approved_review_paths: list[str],
 ) -> list[tuple[Path, str, str]]:
     candidates: list[tuple[Path, str, str]] = []
@@ -176,6 +177,16 @@ def candidate_sources(
         for path in collect_wavs(approved):
             candidates.append(
                 (path, "REVIEW_APPROVED", run_name)
+            )
+
+    for value in source_paths:
+        root = project_path(value)
+        if not root.is_dir():
+            raise NotADirectoryError(root)
+        label = root.name
+        for path in collect_wavs(root):
+            candidates.append(
+                (path, "CONFIRMED_SOURCE", label)
             )
 
     for value in approved_review_paths:
@@ -203,10 +214,20 @@ def main() -> None:
     parser.add_argument(
         "--run",
         action="append",
-        required=True,
+        default=[],
         help=(
             "Run name under data/runs/<profile>/ or a run directory path. "
             "Repeat for multiple runs."
+        ),
+    )
+    parser.add_argument(
+        "--source",
+        action="append",
+        default=[],
+        help=(
+            "Directory of already-confirmed target-speaker WAVs to import. "
+            "Repeat as needed. Useful for pre-runs data such as "
+            "data/reference_bank/<profile>/audio."
         ),
     )
     parser.add_argument(
@@ -246,10 +267,16 @@ def main() -> None:
     manifest_path = destination_root / "manifest.tsv"
     summary_path = destination_root / "summary.json"
 
+    if not args.run and not args.source and not args.approved_review:
+        parser.error(
+            "at least one of --run, --source, or --approved-review is required"
+        )
+
     candidates = candidate_sources(
         config,
         profile,
         args.run,
+        args.source,
         args.approved_review,
     )
     if not candidates:
@@ -364,6 +391,7 @@ def main() -> None:
                 "duplicate_count": duplicate,
                 "failed_count": failed,
                 "runs": args.run,
+                "source_paths": args.source,
                 "approved_review_paths": args.approved_review,
             },
         }
