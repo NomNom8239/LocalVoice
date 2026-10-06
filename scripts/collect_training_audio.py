@@ -107,20 +107,6 @@ def existing_fingerprints(audio_dir: Path) -> dict[str, Path]:
     return fingerprints
 
 
-def load_manifest_fingerprints(path: Path) -> set[str]:
-    if not path.exists():
-        return set()
-
-    values: set[str] = set()
-    with path.open("r", encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        for row in reader:
-            value = (row.get("audio_fingerprint") or "").strip()
-            if value:
-                values.add(value)
-    return values
-
-
 def append_manifest(path: Path, rows: list[dict[str, str]]) -> None:
     if not rows:
         return
@@ -264,8 +250,7 @@ def main() -> None:
         if audio_dir.exists()
         else {}
     )
-    known_manifest = load_manifest_fingerprints(manifest_path)
-    known = set(known_fingerprints) | known_manifest
+    known = set(known_fingerprints)
 
     added_rows: list[dict[str, str]] = []
     added = 0
