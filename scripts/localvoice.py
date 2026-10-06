@@ -29,6 +29,7 @@ from common import (
 
 
 MIN_RMS = 1e-4
+MAX_MERGE_GAP_SECONDS = 0.8
 
 
 def run(cmd: list[str], *, capture: bool = False) -> str:
@@ -186,6 +187,64 @@ def has_overlap(
     return False
 
 
+def merge_diarization_turns(
+    turns: list[tuple[float, float, str]],
+    *,
+    max_gap: float,
+    max_duration: float,
+) -> tuple[list[tuple[float, float, str, int]], int]:
+    """Merge nearby turns from the same speaker without crossing another speaker.
+
+    Turns that overlap a different speaker are excluded and act as hard
+    boundaries. A merged segment never exceeds max_duration.
+    """
+    ordered = sorted(turns, key=lambda item: (item[0], item[1], item[2]))
+    segments: list[tuple[float, float, str, int]] = []
+    current: tuple[float, float, str, int] | None = None
+    overlap_skipped = 0
+
+    for start, end, speaker in ordered:
+        if end <= start:
+            continue
+
+        if has_overlap(start, end, speaker, ordered):
+            overlap_skipped += 1
+            if current is not None:
+                segments.append(current)
+                current = None
+            continue
+
+        if current is None:
+            current = (start, end, speaker, 1)
+            continue
+
+        current_start, current_end, current_speaker, source_turns = current
+        gap = start - current_end
+        merged_end = max(current_end, end)
+        merged_duration = merged_end - current_start
+
+        if (
+            speaker == current_speaker
+            and gap <= max_gap
+            and merged_duration <= max_duration
+        ):
+            current = (
+                current_start,
+                merged_end,
+                current_speaker,
+                source_turns + 1,
+            )
+            continue
+
+        segments.append(current)
+        current = (start, end, speaker, 1)
+
+    if current is not None:
+        segments.append(current)
+
+    return segments, overlap_skipped
+
+
 def classify(
     config: dict,
     profile: str,
@@ -241,6 +300,11 @@ def classify(
         (float(turn.start), float(turn.end), speaker)
         for turn, speaker in result.speaker_diarization
     ]
+    segments, overlap_skipped = merge_diarization_turns(
+        turns,
+        max_gap=MAX_MERGE_GAP_SECONDS,
+        max_duration=max_duration,
+    )
 
     backend, embedding_sample_rate = embedding_backend(config, device)
 
@@ -257,8 +321,8 @@ def classify(
     (output_dir / "review_approved").mkdir(parents=True, exist_ok=True)
 
     counts = {key: 0 for key in destinations}
-    overlap_skipped = 0
     silent_skipped = 0
+    merged_segments = sum(1 for *_, source_turns in segments if source_turns > 1)
 
     manifest = output_dir / "classification.tsv"
     with manifest.open("w", encoding="utf-8", newline="") as f:
@@ -269,6 +333,7 @@ def classify(
                 "start",
                 "end",
                 "duration",
+                "source_turns",
                 "score",
                 "classification",
                 "file",
@@ -277,12 +342,8 @@ def classify(
 
         written = 0
 
-        for start, end, speaker in turns:
+        for start, end, speaker, source_turns in segments:
             duration = end - start
-
-            if has_overlap(start, end, speaker, turns):
-                overlap_skipped += 1
-                continue
 
             start_sample = max(0, int(start * sample_rate))
             end_sample = min(len(audio), int(end * sample_rate))
@@ -337,6 +398,7 @@ def classify(
                     f"{start:.3f}",
                     f"{end:.3f}",
                     f"{duration:.3f}",
+                    str(source_turns),
                     score_text,
                     classification,
                     str(output_path),
@@ -346,13 +408,17 @@ def classify(
             print(
                 f"{classification:8s} "
                 f"{score_text:>6s}  "
-                f"{speaker} {start:.3f}-{end:.3f}"
+                f"{speaker} {start:.3f}-{end:.3f} "
+                f"(turns={source_turns})"
             )
 
     print("\n" + "=" * 60)
     print("Classification complete")
     for key, value in counts.items():
         print(f"{key:16s}: {value}")
+    print(f"{'RAW_TURNS':16s}: {len(turns)}")
+    print(f"{'SEGMENTS':16s}: {len(segments)}")
+    print(f"{'MERGED_SEGMENTS':16s}: {merged_segments}")
     print(f"{'OVERLAP_SKIPPED':16s}: {overlap_skipped}")
     print(f"{'SILENT_SKIPPED':16s}: {silent_skipped}")
     print("=" * 60)
