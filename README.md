@@ -41,6 +41,7 @@ LocalVoice/
 │  ├─ diarize.py
 │  ├─ build_reference_bank.py
 │  ├─ calibrate_threshold.py
+│  ├─ review_training_audio.py
 │  ├─ collect_training_audio.py
 │  └─ build_rvc_dataset.py
 └─ data/                  # generated/local data; Git 管理外
@@ -168,13 +169,45 @@ data/runs/<profile>/<run-name>/
 ├─ separated/
 ├─ my_voice/
 ├─ review/
-├─ review_approved/        # 手動採用した review をここへコピー
 ├─ review_unscored/
+├─ review_approved/        # 手動採用した通常声
+├─ review_emotion/         # 手動採用した感情・極端発声
+├─ review_rejected/        # 手動却下
 ├─ rejected/
+├─ review_decisions.tsv
 └─ classification.tsv
 ```
 
 reference bank は自動更新しません。誤判定の自己増殖を避けるため、`my_voice/` を reference bank へ自動投入しないでください。
+
+### 手動レビュー
+
+通常の speaker embedding で確信できない `review/` と、短すぎてスコアを出していない
+`review_unscored/` は、対話式レビューで仕分けします。
+
+```powershell
+python .\scripts\review_training_audio.py `
+  --profile Toto_Kogara
+```
+
+キー:
+
+```text
+y = 本人の通常声として採用     -> review_approved/
+e = 本人の感情・極端発声として採用 -> review_emotion/
+n = 却下                     -> review_rejected/
+r = 再生し直す
+s = 今回は保留
+q = 終了
+```
+
+元 WAV は削除・移動せず、そのまま保持します。判断結果は各 run の
+`review_decisions.tsv` に記録されるので、次回は判断済みクリップを自動で飛ばします。
+`ffplay` を自動再生に使用します。自動再生しない場合は `--no-play` を指定できます。
+
+`review_emotion/` は「感情声を機械判定できた」という意味ではありません。
+通常話者照合から外れやすい喘ぎ・叫び・笑い・息声などを、本人だと人間が確認したうえで
+通常声と分けて保持するためのカテゴリです。
 
 ### 学習素材を蓄積
 
@@ -183,10 +216,11 @@ reference bank は自動更新しません。誤判定の自己増殖を避け�
 
 - `my_voice/`
 - `review_approved/`
+- `review_emotion/`
 
 だけを `data/training_audio/<profile>/audio/` へ蓄積します。
-`review/` は自動採用しません。採用する WAV だけを同じ run の
-`review_approved/` へ手動でコピーしてください。
+`review/` と `review_unscored/` は自動採用しません。
+先に `review_training_audio.py` で人間が判断します。
 
 通常実行:
 
@@ -251,7 +285,7 @@ RVC-WebUI には `self/` を dataset path として渡します。
 
 - reference bank には対象話者であることを確認済みの音声だけを入れる。
 - SELF 判定結果を reference bank へ無確認で追加しない。
-- `collect_training_audio.py` は profile 配下の run を自動探索し、`my_voice/` と `review_approved/` のみを採用する。
+- `collect_training_audio.py` は profile 配下の run を自動探索し、`my_voice/`、`review_approved/`、`review_emotion/` のみを採用する。
 - training_audio への追加は元ファイルを削除・移動せずコピーで行い、provenance を `manifest.tsv` に残す。
 - RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
