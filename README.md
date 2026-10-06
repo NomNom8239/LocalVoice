@@ -181,10 +181,20 @@ reference bank は自動更新しません。誤判定の自己増殖を避け�
 各 run の `my_voice/` と、手動採用して `review_approved/` に置いた WAV を
 `data/training_audio/<destination>/audio/` へ蓄積します。同じ音声は canonical audio fingerprint で重複排除されます。
 
+新しい `runs/` 構成より前に作った確認済み音声は、`--source` で直接取り込めます。
+
 ```powershell
 python .\scripts\collect_training_audio.py `
   --profile Toto_Kogara `
   --run archive_001
+```
+
+既存の確認済み音声を初期投入する例:
+
+```powershell
+python .\scripts\collect_training_audio.py `
+  --profile Toto_Kogara `
+  --source ".\data\reference_bank\Toto_Kogara\audio"
 ```
 
 保存先は既定で profile 名です。別名にする場合:
