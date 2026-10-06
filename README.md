@@ -2,7 +2,7 @@
 
 配信アーカイブや既存音声から、対象話者の音声を抽出して **RVC 学習用データセット**まで整形するローカルパイプラインです。
 
-このリポジトリの責務は、音声取得・人声分離・話者分離・話者照合・reference bank・RVC dataset 生成までです。RVC の学習・推論本体は別リポジトリ `NomNom8239/RVC-WebUI` で管理します。
+このリポジトリは音声取得・人声分離・話者分離・話者照合・reference bank・RVC dataset 生成を担当します。RVC の学習・推論本体は別リポジトリ `NomNom8239/RVC-WebUI` で管理します。
 
 ## Pipeline
 
@@ -43,7 +43,6 @@ LocalVoice/
 └─ data/                  # generated/local data; Git 管理外
    ├─ source/
    ├─ wav_master/
-   ├─ separated/
    ├─ diarization/
    ├─ reference_bank/
    ├─ rvc_dataset/
@@ -65,7 +64,7 @@ LocalVoice/
 - FFmpeg 9.x
 - yt-dlp
 
-このリポジトリ用の仮想環境と RVC-WebUI 用の仮想環境は分離してください。
+LocalVoice と RVC-WebUI の仮想環境は分離してください。
 
 ```text
 F:\AIProjects\LocalVoice\.venv
@@ -82,7 +81,7 @@ python -m pip install -U pip
 python -m pip install "audio-separator[gpu]" audioread pyannote.audio soundfile scipy
 ```
 
-CUDA 対応 PyTorch / ONNX Runtime は GPU と CUDA 環境に合わせて別途導入してください。現在の検証環境では CUDA 13.0 系を利用しています。
+CUDA 対応 PyTorch / ONNX Runtime は GPU と CUDA 環境に合わせて導入してください。現在の検証環境では CUDA 13.0 系を利用しています。
 
 Hugging Face の gated model を使うため、利用条件を承認したうえでログインします。
 
@@ -96,11 +95,7 @@ hf auth login
 - community-1 内蔵 speaker embedding
 - `model_bs_roformer_ep_317_sdr_12.9755.ckpt`（audio-separator）
 
-## Configuration
-
-共通設定は `config.toml` にまとめています。
-
-話者固有の reference bank は次の形で管理します。
+## Profile layout
 
 ```text
 data/reference_bank/<profile>/
@@ -110,11 +105,11 @@ data/reference_bank/<profile>/
 └─ thresholds.json
 ```
 
-`thresholds.json` が存在する場合、`localvoice.py` はその profile 固有の threshold を優先して使用します。
+`thresholds.json` が存在する場合、`localvoice.py` は profile 固有値を優先します。
 
 ## Usage
 
-### 1. 話者分離
+### 話者分離
 
 ```powershell
 python .\scripts\diarize.py `
@@ -122,9 +117,7 @@ python .\scripts\diarize.py `
   --output ".\data\diarization\archive_001"
 ```
 
-### 2. Reference bank 作成
-
-対象話者であることを確認済みの WAV を用意して実行します。
+### Reference bank 作成
 
 ```powershell
 python .\scripts\build_reference_bank.py `
@@ -132,9 +125,7 @@ python .\scripts\build_reference_bank.py `
   --source ".\data\reference_bank\Toto_Kogara\audio"
 ```
 
-### 3. Threshold calibration
-
-対象話者ではないことを確認済みの音声を negative sample として使用します。
+### Threshold calibration
 
 ```powershell
 python .\scripts\calibrate_threshold.py `
@@ -142,13 +133,7 @@ python .\scripts\calibrate_threshold.py `
   --negative-source ".\data\diarization\negative"
 ```
 
-結果は以下へ保存されます。
-
-```text
-data/reference_bank/Toto_Kogara/thresholds.json
-```
-
-### 4. YouTube から対象話者を自動抽出
+### YouTube から対象話者を自動抽出
 
 ```powershell
 python .\scripts\localvoice.py `
@@ -172,10 +157,11 @@ python .\scripts\localvoice.py `
   --vocals ".\path\to\Vocals.wav"
 ```
 
-分類結果は profile ごとの run directory に保存されます。
+分類結果:
 
 ```text
 data/runs/<profile>/<run-name>/
+├─ separated/
 ├─ my_voice/
 ├─ review/
 ├─ review_unscored/
@@ -185,7 +171,7 @@ data/runs/<profile>/<run-name>/
 
 reference bank は自動更新しません。誤判定の自己増殖を避けるため、`my_voice/` を確認してから reference audio に追加します。
 
-### 5. RVC dataset 作成
+### RVC dataset 作成
 
 `--source` と `--profile` は必須です。
 
@@ -212,8 +198,8 @@ RVC-WebUI には `self/` を dataset path として渡します。
 ## Safety boundaries
 
 - reference bank には対象話者であることを確認済みの音声だけを入れる。
-- SELF 自動判定結果を reference bank へ無確認で追加しない。
-- RVC dataset の `ACCEPT` は機械的 QC を通過したという意味であり、話者・分離品質の最終確認を代替しない。
+- SELF 判定結果を reference bank へ無確認で追加しない。
+- RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
 
 ## Git policy
