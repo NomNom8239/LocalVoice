@@ -209,6 +209,24 @@ q = 終了
 通常話者照合から外れやすい喘ぎ・叫び・笑い・息声などを、本人だと人間が確認したうえで
 通常声と分けて保持するためのカテゴリです。
 
+大量の `review_unscored/` から感情声だけを拾う場合は、対象を絞ってレビューできます。
+
+```powershell
+python .\scripts\review_training_audio.py `
+  --profile <profile> `
+  --run <run-name> `
+  --kind unscored `
+  --min-duration 0.3 `
+  --max-duration 2.0 `
+  --limit 100 `
+  --emotion-only
+```
+
+`--emotion-only` では `e` が `review_emotion/` への採用、
+`n` が「感情声ではない」として判断済みの記録になります。
+`n` のクリップは `review_rejected/` へコピーせず、通常学習素材にも自動追加しません。
+`--limit` を使えば100件ずつなどの単位で進められます。
+
 ### 学習素材を蓄積
 
 `collect_training_audio.py` には URL や run 名を渡しません。
