@@ -155,7 +155,7 @@ def candidate_sources(
     config: dict,
     profile: str,
     run_values: list[str],
-    source_paths: list[str],
+    confirmed_paths: list[str],
     approved_review_paths: list[str],
 ) -> list[tuple[Path, str, str]]:
     candidates: list[tuple[Path, str, str]] = []
@@ -179,7 +179,7 @@ def candidate_sources(
                 (path, "REVIEW_APPROVED", run_name)
             )
 
-    for value in source_paths:
+    for value in confirmed_paths:
         root = project_path(value)
         if not root.is_dir():
             raise NotADirectoryError(root)
@@ -221,13 +221,12 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--source",
+        "--confirmed-dir",
         action="append",
         default=[],
         help=(
             "Directory of already-confirmed target-speaker WAVs to import. "
-            "Repeat as needed. Useful for pre-runs data such as "
-            "data/reference_bank/<profile>/audio."
+            "This is only for legacy/pre-runs data. Repeat as needed."
         ),
     )
     parser.add_argument(
@@ -267,16 +266,27 @@ def main() -> None:
     manifest_path = destination_root / "manifest.tsv"
     summary_path = destination_root / "summary.json"
 
-    if not args.run and not args.source and not args.approved_review:
+    run_values = list(args.run)
+    if not run_values:
+        profile_runs = run_dir(config, profile)
+        if profile_runs.is_dir():
+            run_values = [
+                str(path)
+                for path in sorted(profile_runs.iterdir())
+                if path.is_dir()
+            ]
+
+    if not run_values and not args.confirmed_dir and not args.approved_review:
         parser.error(
-            "at least one of --run, --source, or --approved-review is required"
+            "no runs were found and no --confirmed-dir/--approved-review "
+            "input was provided"
         )
 
     candidates = candidate_sources(
         config,
         profile,
-        args.run,
-        args.source,
+        run_values,
+        args.confirmed_dir,
         args.approved_review,
     )
     if not candidates:
@@ -390,8 +400,8 @@ def main() -> None:
                 "added_duration_sec": added_duration,
                 "duplicate_count": duplicate,
                 "failed_count": failed,
-                "runs": args.run,
-                "source_paths": args.source,
+                "runs": run_values,
+                "confirmed_paths": args.confirmed_dir,
                 "approved_review_paths": args.approved_review,
             },
         }
