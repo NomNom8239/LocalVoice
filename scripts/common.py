@@ -54,6 +54,10 @@ def rvc_dir(config: dict[str, Any], profile: str) -> Path:
     return data_dir(config, "rvc_dataset") / profile_name(profile)
 
 
+def training_audio_dir(config: dict[str, Any], destination: str) -> Path:
+    return data_dir(config, "training_audio") / profile_name(destination)
+
+
 def run_dir(config: dict[str, Any], profile: str) -> Path:
     return data_dir(config, "runs") / profile_name(profile)
 
