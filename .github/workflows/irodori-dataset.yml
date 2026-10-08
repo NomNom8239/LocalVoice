@@ -36,6 +36,6 @@ jobs:
             exit 1
           }
       - name: Compile dataset and classifier code
-        run: python -m compileall -q scripts/irodori_dataset.py scripts/irodori_style.py scripts/irodori_autoprep.py tests/test_irodori_dataset.py tests/test_irodori_style.py tests/test_irodori_autoprep.py
+        run: python -m compileall -q scripts/irodori_dataset.py scripts/irodori_style.py scripts/irodori_autoprep.py scripts/irodori_nonverbal_pilot.py tests/test_irodori_dataset.py tests/test_irodori_style.py tests/test_irodori_autoprep.py tests/test_irodori_nonverbal_pilot.py
       - name: Run mock-only dataset tests (no model download)
         run: python -m unittest discover -s tests -p 'test_irodori*.py' -v
