@@ -131,12 +131,23 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
         elif decision not in {"pending", "tagged", "approved", "needs_text", "needs_caption", "style_confirmed"}:
             route, reason = "excluded", "unknown_decision"
         elif not content:
-            if style in NONVERBAL and (confirmed or tentative or state == "style_prediction_candidate"):
-                route, reason = "nonverbal_experiment", "nonverbal_text_protocol_unvalidated"
+            if (confirmed or tentative) and style in CAPTIONS:
+                # A prior human style decision is sufficient: no text can be
+                # manufactured, and no second listening pass is required.
+                route, reason = "nonverbal_experiment", "human_labeled_without_spoken_text"
             elif state in {"not_classified", "classification_failed"}:
                 route, reason = "automatic_processing", "missing_style_inference"
+            elif style in NONVERBAL and state == "style_prediction_candidate":
+                route, reason = "nonverbal_experiment", "nonverbal_text_protocol_unvalidated"
+            elif (style in NONVERBAL and state == "style_prediction_uncertain"
+                  and "competing_voice_styles" in st.get("reason", "")):
+                # Only competing nonverbal voices are worth classifying by ear.
+                # This is a targeted queue, not a catch-all for low AST scores.
+                route, reason = "ambiguous_vocal_style", "competing_nonverbal_delivery"
             else:
-                route, reason = "ambiguous_vocal_style", "speech_vs_nonverbal_uncertain"
+                # AST 'unknown' or weak speech/noise is not a user task.
+                # Keep it traceable without inventing a transcript or label.
+                route, reason = "deferred_unresolved_audio", "no_verified_speech_or_vocal_style"
         elif confirmed:
             route, reason = "training_candidate", "human_confirmed_style_with_automatic_caption"
         elif tentative:
@@ -145,30 +156,33 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
             else:
                 route, reason = "training_candidate", "human_tentative_style_with_asr_text"
         elif origin in {"my_voice", "review_approved"}:
-            if not st or (style == "normal" and state == "style_prediction_candidate"):
+            if strong_style(st, state) and style in NONVERBAL | {"whisper"}:
+                # Strong unusual audio is retained as a suggestion, not
+                # represented as a human-verified special vocal delivery.
+                style_source = "ast_strong_heuristic_unverified"
+                caption = CAPTIONS[style]
+                route, reason = "training_candidate", "strong_non_normal_event_candidate"
+            else:
+                # AST was trained on longer AudioSet events. Its weak/unknown
+                # scores must not defeat already curated speech provenance.
                 style, style_source = "normal", "curated_source_normal_default"
                 caption = CAPTIONS["normal"]
                 route, reason = "training_candidate", "curated_source_with_asr"
-            elif strong_style(st, state):
-                style_source = "ast_strong_heuristic_unverified"
-                caption = CAPTIONS.get(style, "")
-                route, reason = "training_candidate", "strong_non_normal_event_candidate"
-            else:
-                route, reason = "ambiguous_vocal_style", "speech_vs_audio_style_disagreement"
         elif origin == "review_emotion":
-            if not st:
-                route, reason = "automatic_processing", "missing_style_inference"
-            elif strong_style(st, state):
-                if style == "normal":
-                    style, style_source = "emotion", "emotional_source_plus_ast_speech"
-                else:
-                    style_source = "ast_strong_heuristic_unverified"
+            if strong_style(st, state) and style in NONVERBAL | {"whisper"}:
+                style_source = "ast_strong_heuristic_unverified"
                 caption = CAPTIONS[style]
-                route, reason = "training_candidate", "strong_event_plus_emotional_source"
+                route, reason = "training_candidate", "strong_special_event_candidate"
             else:
-                route, reason = "ambiguous_vocal_style", "expressive_delivery_needs_identification"
+                # Source was *already* selected for expressive delivery.
+                # Do not require hundreds of low-score AST overrides.
+                style, style_source = "emotion", "curated_emotion_source_default"
+                caption = CAPTIONS["emotion"]
+                route, reason = "training_candidate", "curated_expressive_source_with_asr"
         else:
-            route, reason = "ambiguous_vocal_style", "unknown_source_style"
+            # Unknown provenance is an automatic quality hold rather than
+            # a demand that a user transcribe or classify the whole corpus.
+            route, reason = "deferred_unresolved_audio", "unknown_source_provenance"
 
         if route == "training_candidate":
             if style not in CAPTIONS or not content:
@@ -213,7 +227,10 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
         "asr_text_is_machine_generated": True,
         "human_verified_only": False,
         "nonverbal_experiment_is_training_ready": False,
-        "manual_action": "Only classify unclear vocal styles in ambiguous_vocal_review.csv",
+        "routing_policy": "curated_source_default_with_targeted_nonverbal_review_v2",
+        "reason_counts": dict(Counter(item["reason"] for item in details)),
+        "manual_style_review_cases": len(ambiguous),
+        "manual_action": "Only competing unclear nonverbal voices warrant optional listening; no transcription/caption writing.",
         "outputs": {
             "training": str(out / "dataset_for_prepare_manifest_auto.csv"),
             "vocal_exceptions": str(out / "ambiguous_vocal_review.csv"),
