@@ -139,6 +139,55 @@ class NonverbalManifestTests(unittest.TestCase):
             stage.smoke(self.args, self.source, self.out,
                         runner=self.fake_runner, root=self.root)
 
+    def test_win32_torchcodec_dll_error_bootstraps_only_compatible_ffmpeg(self):
+        calls = []
+        shared = self.root / "private-ffmpeg" / "bin"
+        shared.mkdir(parents=True)
+
+        def simulated_win(argv, **kwargs):
+            calls.append(argv)
+            if argv[1] == "-c":
+                if "from importlib.metadata" in argv[2]:
+                    return SimpleNamespace(returncode=0, stdout=json.dumps({
+                        "torch": "2.10.0+cu128", "torchcodec": "0.10.0",
+                    }), stderr="")
+                if "add_dll_directory" in argv[2]:
+                    return SimpleNamespace(returncode=0, stdout="cuda_available=True",
+                                           stderr="")
+                return SimpleNamespace(returncode=1, stdout="",
+                                       stderr="Could not load libtorchcodec_core7.dll")
+            return self.fake_runner(argv, **kwargs)
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            result = stage.smoke(
+                self.args, self.source, self.out,
+                runner=simulated_win, root=self.root,
+                windows=True, shared_resolver=lambda upstream, explicit: shared
+            )
+        self.assertEqual(result["status"], "PASS_DACVAE_MANIFEST_ONLY")
+        self.assertEqual(result["ffmpeg_shared_bin"], str(shared))
+        self.assertTrue(any("irodori_codec_entry.py" in item[1] for item in calls
+                            if item[1] != "-c"))
+        self.assertEqual((self.out / "review.csv").read_bytes(), self.initial_review)
+
+    def test_win32_version_mismatch_blocks_without_installation(self):
+        called = []
+
+        def wrong_pair(argv, **kwargs):
+            if "from importlib.metadata" in argv[2]:
+                return SimpleNamespace(returncode=0, stdout=json.dumps({
+                    "torch": "2.8.0+cu128", "torchcodec": "0.10.0",
+                }), stderr="")
+            return SimpleNamespace(returncode=1, stdout="",
+                                   stderr="Could not load libtorchcodec")
+        with self.assertRaisesRegex(RuntimeError, "Incompatible Torch/TorchCodec"):
+            stage.smoke(
+                self.args, self.source, self.out, runner=wrong_pair,
+                root=self.root, windows=True,
+                shared_resolver=lambda upstream, explicit: called.append("install")
+            )
+        self.assertEqual(called, [])
+
     def test_upstream_cuda_unavailable_block(self):
         def no_cuda(argv, **kwargs):
             return SimpleNamespace(returncode=0, stdout="cuda_available=False",
