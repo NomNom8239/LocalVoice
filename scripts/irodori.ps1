@@ -25,6 +25,7 @@ param(
     [int]$Steps = 24,
     [string]$CheckpointPath,
     [switch]$Run,
+    [switch]$FetchCheckpoint,
     [string]$ConfigPath,
     [string]$FFmpegSharedBin,
     [string]$Workspace
@@ -194,6 +195,7 @@ if ($Action -eq "nonverbal-lora") {
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
     if ($CheckpointPath) { $argsList += @("--checkpoint", $CheckpointPath) }
     if ($Run) { $argsList += "--run" }
+    if ($FetchCheckpoint) { $argsList += "--fetch-checkpoint" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
