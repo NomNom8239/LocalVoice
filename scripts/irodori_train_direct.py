@@ -131,19 +131,24 @@ def nonverbal_rows(state: dict, source: Path, ws: Path) -> list[dict]:
         if (cid in state["train_ids"] or cid in state["eval_ids"]
                 or video(inv) in state["eval_videos"]):
             continue
-        if (style not in VOICE_STYLES or
-                audit.get("style_source") != "human_confirmed" or
-                reviewed.get("speaker_ok") != "yes" or
-                reviewed.get("quality") != "good" or
-                reviewed.get("decision") not in ("style_confirmed", "approved")):
+        if style not in VOICE_STYLES or not row.get("text") or not row.get("caption"):
             continue
-        if not row.get("text") or not row.get("caption"):
+        # The previous nonverbal pilot already checked exact source SHA and
+        # tokenizer compatibility, not necessarily human style confirmation.
+        # Include experimental cues for the explicitly requested trial,
+        # recording their provenance rather than misreporting them as verified.
+        if (state["auto"][cid].get("source_kind") not in
+                ("my_voice", "review_approved", "review_emotion") and
+                reviewed.get("speaker_ok") != "yes"):
             continue
+        label_level = ("human" if
+                       audit.get("style_source") == "human_confirmed"
+                       else "experimental")
         results.append({
             "audio": str(path), "text": row["text"],
             "caption": row["caption"], "speaker": SPEAKER,
             "clip_id": cid, "sha256": inv["sha256"],
-            "kind": f"human_nonverbal_{style}",
+            "kind": f"{label_level}_nonverbal_{style}",
         })
     return results
 
@@ -383,7 +388,7 @@ def infer_pair(root: Path, upstream: Path, py: Path, checkpoint: Path,
     # Always derive text+caption from actual checked nonverbal examples.
     examples = {}
     for row in expressive_rows:
-        style = row["kind"].removeprefix("human_nonverbal_")
+        style = row["kind"].rsplit("_nonverbal_", 1)[-1]
         if style not in examples:
             examples[style] = row
     for style, row in sorted(examples.items()):
@@ -444,7 +449,11 @@ def run(args: argparse.Namespace) -> int:
     speech = [r for r in speech if r["clip_id"] not in included]
     normal = approved + speech
     expressive = nonverbal_rows(state, source.resolve(), ws)
-    expressive, bad_exp = verified_wave_quality(expressive, state["inventory"])
+    # Breath/groan recordings may be quiet by definition. They have already
+    # passed the separate SHA/tokenizer-checked experimental pilot; retain
+    # them unless unreadable, fully silent, changed, or invalid-duration.
+    expressive, bad_exp = verified_wave_quality(
+        expressive, state["inventory"], strict_acoustic_gate=False)
     expressive = [r for r in expressive if r["clip_id"] not in {x["clip_id"] for x in normal}]
     if len(normal) < MIN_SPEECH:
         raise ValueError("Insufficient normal speech for a meaningful LoRA attempt")
@@ -488,6 +497,9 @@ def run(args: argparse.Namespace) -> int:
         "model_quality_verified": False,
         "nonverbal_quality_verified": False,
         "target_vocalizations": sorted({x["kind"] for x in expressive}),
+        "nonverbal_label_status": (
+            "Pilot emoji/caption hypotheses are tokenizer-checked; "
+            "experimental cues are NOT validated descriptions of the WAV."),
         "source_transcript_caveat": (
             "Non-previously-approved normal rows use existing ASR suggestions; "
             "not all texts have a human transcript check."),
