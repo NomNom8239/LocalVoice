@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check", "nonverbal-manifest", "nonverbal-lora", "nonverbal-compare")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check", "nonverbal-manifest", "nonverbal-lora", "nonverbal-compare", "nonverbal-evaluate")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -200,6 +200,12 @@ if ($Action -eq "nonverbal-lora") {
 if ($Action -eq "nonverbal-compare") {
     $compareDriver = Join-Path $PSScriptRoot "irodori_nonverbal_compare.py"
     $argsList = @($compareDriver, "--profile", $Speaker)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($Run) { $argsList += "--run" }
+}
+if ($Action -eq "nonverbal-evaluate") {
+    $evaluateDriver = Join-Path $PSScriptRoot "irodori_nonverbal_evaluate.py"
+    $argsList = @($evaluateDriver, "--profile", $Speaker, "--device", $Device)
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
     if ($Run) { $argsList += "--run" }
 }
