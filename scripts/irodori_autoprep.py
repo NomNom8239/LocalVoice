@@ -128,7 +128,7 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
             route, reason = "excluded", "human_rejected"
         elif row.get("scan_flag") in {"unreadable", "low_sample_rate", "long"}:
             route, reason = "excluded", "invalid_or_out_of_range_audio"
-        elif decision not in {"pending", "tagged", "approved", "needs_text", "needs_caption"}:
+        elif decision not in {"pending", "tagged", "approved", "needs_text", "needs_caption", "style_confirmed"}:
             route, reason = "excluded", "unknown_decision"
         elif not content:
             if style in NONVERBAL and (confirmed or tentative or state == "style_prediction_candidate"):
