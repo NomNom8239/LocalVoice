@@ -125,6 +125,48 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(row["decision"], "pending")
         self.assertEqual(row["text"], "")
 
+    def test_triage_keeps_review_and_wav_unchanged(self):
+        mod.scan(self.args, self.source, self.out)
+        review_path = self.out / "review.csv"
+        original = review_path.read_bytes()
+        inventory = mod.read_csv(self.out / "inventory.csv")
+        clip = inventory[0]
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [{
+            "clip_id": clip["clip_id"], "sha256": clip["sha256"],
+            "asr_status": "no_detected_text_review_audio",
+            "asr_suggestion": "", "language": "ja", "error_detail": "",
+        }])
+        mod.triage(self.args, self.source, self.out)
+        queue = mod.read_csv(self.out / "triage.csv")
+        self.assertEqual(len(queue), 1)
+        self.assertEqual(queue[0]["review_group"], "no_detected_text")
+        self.assertEqual(review_path.read_bytes(), original)
+        self.assertEqual(mod.digest(self.wav), self.original)
+
+    def test_triage_flags_repeated_characters_without_auto_approval(self):
+        mod.scan(self.args, self.source, self.out)
+        clip = mod.read_csv(self.out / "inventory.csv")[0]
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [{
+            "clip_id": clip["clip_id"], "sha256": clip["sha256"],
+            "asr_status": "suggested", "asr_suggestion": "あああああ！",
+            "language": "ja", "error_detail": "",
+        }])
+        mod.triage(self.args, self.source, self.out)
+        queue = mod.read_csv(self.out / "triage.csv")
+        self.assertEqual(queue[0]["review_group"], "expressive_or_unclear")
+        self.assertEqual(mod.read_csv(self.out / "review.csv")[0]["decision"], "pending")
+
+    def test_triage_rejects_mismatched_hash(self):
+        mod.scan(self.args, self.source, self.out)
+        clip = mod.read_csv(self.out / "inventory.csv")[0]
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [{
+            "clip_id": clip["clip_id"], "sha256": "bad",
+            "asr_status": "suggested", "asr_suggestion": "ああ",
+            "language": "ja", "error_detail": "",
+        }])
+        with self.assertRaisesRegex(ValueError, "ASR hash mismatch"):
+            mod.triage(self.args, self.source, self.out)
+
     def test_existing_workspace_is_reused(self):
         legacy = self.root / "Irodori-TTS" / "outputs" / "localvoice_lora_dataset"
         legacy.mkdir(parents=True)
