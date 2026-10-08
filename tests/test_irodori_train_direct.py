@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import math
+import struct
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -85,6 +88,34 @@ class DirectLoraTests(unittest.TestCase):
         self.assertEqual(info["nonverbal_unique"], 1)
         self.assertEqual(len(manifest.read_text().splitlines()), 3)
         self.assertNotEqual(weighted, manifest)
+
+    def test_frozen_approved_quiet_wav_kept_without_weakening_new_gate(self):
+        # This previously approved clip is structurally valid and unchanged.
+        # Its low RMS fails the NEW provisional acoustic heuristic only.
+        wav = self.root / "old__quiet.wav"
+        rate = 16000
+        with wave.open(str(wav), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(rate)
+            frames = (int(32767 * 0.001 * math.sin(2 * math.pi * 220 * n / rate))
+                      for n in range(rate * 2))
+            out.writeframes(b"".join(struct.pack("<h", x) for x in frames))
+        original = direct.sha256(wav)
+        row = {"audio": str(wav), "clip_id": "old", "sha256": original}
+        inventory = {"old": {"sha256": original}}
+        strict, rejection = direct.verified_wave_quality([row], inventory)
+        self.assertEqual(strict, [])
+        self.assertEqual(rejection["acoustic_quality_gate"], 1)
+        frozen, failure = direct.verified_wave_quality(
+            [row], inventory, strict_acoustic_gate=False)
+        self.assertEqual(frozen, [row])
+        self.assertEqual(failure, {})
+        wav.write_bytes(b"changed")
+        tampered, rejection = direct.verified_wave_quality(
+            [row], inventory, strict_acoustic_gate=False)
+        self.assertEqual(tampered, [])
+        self.assertEqual(rejection["missing_or_sha_changed"], 1)
 
     def test_round_robin_balances_video_source(self):
         clips = [
