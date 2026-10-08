@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check", "nonverbal-manifest")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -16,6 +16,7 @@ param(
     [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript", "needs_caption")]
     [string]$Group,
     [switch]$NoPlay,
+    [switch]$DryRun,
     [switch]$IncludeTagged,
     [switch]$RetryErrors,
     [switch]$IncludeShort,
@@ -174,6 +175,13 @@ if ($Action -eq "nonverbal-check") {
     $argsList = @($checkDriver, "--profile", $Speaker)
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
     if ($ConfigPath) { $argsList += @("--config", $ConfigPath) }
+}
+if ($Action -eq "nonverbal-manifest") {
+    $manifestDriver = Join-Path $PSScriptRoot "irodori_nonverbal_manifest.py"
+    $argsList = @($manifestDriver, "--profile", $Speaker)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($Device -eq "cpu") { $argsList += @("--device", "cpu") }
+    if ($DryRun) { $argsList += "--dry-run" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
