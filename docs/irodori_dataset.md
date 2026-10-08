@@ -35,6 +35,38 @@ These groups are *inspection hints*, not automatic confirmations of
 breathing, groaning, whispering or the correct speaker. Listen and edit
 `review.csv` (not `triage.csv`) to approve/reject clips.
 
+### Interactive LoRA review
+
+Use the existing `review_emotion` provenance first. These were already
+curated as emotional/extreme voice by the LocalVoice source review, though
+the Irodori transcription/style/quality still need human verification.
+
+```powershell
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind emotion -Group short_audio -Limit 20
+```
+
+Audio plays through `ffplay` (as in the existing `review_training_audio.py`).
+Controls: `a` = approve with verified text/style/caption and explicit
+speaker/quality confirmation; `t` = save only a tentative nonverbal style
+tag; `n` = reject; `r` = replay; `s` = skip; `q` = quit.
+
+After each action, changes are atomically persisted to `review.csv`,
+without touching the WAV. An item tagged with `t` gets `decision=tagged`,
+**not** `approved`; it is ignored by export and by subsequent default
+review sessions. To revisit previously tagged clips, regenerate the queue
+with `triage`, then use `-IncludeTagged` (and optionally
+`-Group tagged_nonverbal`).
+
+```powershell
+.\scripts\irodori.ps1 triage -Speaker Ui_Shigure
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind emotion -Group tagged_nonverbal -IncludeTagged -Limit 20
+```
+
+Clips without a verified transcript cannot be approved for the current
+intermediate export. In particular, do **not** invent utterance text for
+breath/groan-only clips. Tag them until the upstream Irodori representation
+for nonverbal data has been validated.
+
 ### Human review gate
 
 For each approved clip, listen to the audio and enter a verified `text`, `style`, and a `caption` for special delivery. Set `speaker_ok=yes`, `quality=good`, `decision=approved` only after checking the content.
