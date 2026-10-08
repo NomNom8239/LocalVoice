@@ -195,7 +195,9 @@ def new_dir(ws: Path) -> Path:
     raise RuntimeError("No free LV-02 expansion attempt folder")
 
 
-def audit(ws: Path) -> Path:
+def audit(ws: Path, queue_limit: int = 48) -> Path:
+    if queue_limit < 1:
+        raise ValueError("queue_limit must be positive")
     state = load_authority(ws)
     rows, summary = classify(state)
     dest = new_dir(ws)
@@ -231,12 +233,16 @@ def audit(ws: Path) -> Path:
         for key in sorted(batches):
             if batches[key]:
                 balanced.append(batches[key].pop(0))
+    available = len(balanced)
+    balanced = balanced[:queue_limit]
     write_csv(dest / "review_queue.csv", REVIEW_COLS, balanced)
     result = {
         "status": "AUDIT_COMPLETE_NO_AUTO_APPROVAL",
         "input_inventory": 1167, "historical_train": 8,
         "historical_external_eval": 3,
         "review_queue": len(balanced),
+        "review_queue_available": available,
+        "review_queue_limit": queue_limit,
         "review_queue_order": "balanced round-robin across source video",
         "review_tier_counts": summary["tiers"],
         "by_source_video": summary["by_source_video"],
@@ -339,10 +345,12 @@ def main() -> int:
     parser.add_argument("--workspace", type=Path, default=WORKSPACE)
     parser.add_argument("--reviewed", type=Path,
                         help="CSV copied from audit's review_queue.csv; explicit decisions only")
+    parser.add_argument("--queue-limit", type=int, default=48,
+                        help="Limit a balanced first review wave; full 1167-row audit remains")
     args = parser.parse_args()
     ws = args.workspace.resolve()
     if args.action == "audit":
-        audit(ws)
+        audit(ws, queue_limit=args.queue_limit)
     elif args.reviewed is None:
         raise ValueError("export requires --reviewed CSV")
     else:
