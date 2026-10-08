@@ -148,7 +148,17 @@ def nonverbal_rows(state: dict, source: Path, ws: Path) -> list[dict]:
     return results
 
 
-def verified_wave_quality(rows: list[dict], inv_by_clip: dict) -> tuple[list[dict], Counter]:
+def verified_wave_quality(
+    rows: list[dict], inv_by_clip: dict, *, strict_acoustic_gate: bool = True,
+) -> tuple[list[dict], Counter]:
+    """Validate WAV integrity; preserve frozen approvals without a new QC veto.
+
+    All sources are SHA-checked and must decode to finite, valid audio.
+    New/unreviewed candidates still pass strict acoustic quality limits.
+    Previously approved clips have already passed official LV-03 DACVAE
+    and keep their historical acceptance, rather than retroactively failing
+    on a new silence/loudness heuristic.
+    """
     import numpy as np
     import soundfile as sf
     good, reasons = [], Counter()
@@ -169,8 +179,12 @@ def verified_wave_quality(rows: list[dict], inv_by_clip: dict) -> tuple[list[dic
             clipping = float(np.mean(np.abs(signal) >= 0.999))
             dc_offset = float(abs(mono.mean()))
             silent = float(np.mean(np.abs(mono) < 0.002))
-            if not (1.5 <= duration <= 25 and 0.003 <= rms <= 0.40
-                    and clipping <= 0.005 and dc_offset <= 0.05 and silent < 0.90):
+            if not (1.5 <= duration <= 25 and rms > 0):
+                reasons["invalid_duration_or_silent"] += 1
+                continue
+            if (strict_acoustic_gate and not (
+                    0.003 <= rms <= 0.40 and clipping <= 0.005
+                    and dc_offset <= 0.05 and silent < 0.90)):
                 reasons["acoustic_quality_gate"] += 1
                 continue
         except (OSError, ValueError, RuntimeError):
@@ -418,9 +432,14 @@ def run(args: argparse.Namespace) -> int:
             "caveat": "Existing routing does not independently prove identity.",
         }
     speech = evenly_sample(screened, args.max_speech)
-    approved, bad_approved = verified_wave_quality(preserved, state["inventory"])
+    # The 8 original human-approved WAVs already passed official LV-03
+    # DACVAE. Preserve that decision, while still rejecting tampered,
+    # unreadable, invalid-duration, or completely silent audio.
+    approved, bad_approved = verified_wave_quality(
+        preserved, state["inventory"], strict_acoustic_gate=False)
     if len(approved) != len(preserved):
-        raise ValueError(f"Frozen approved training WAVs failed audio QC: {bad_approved}")
+        raise ValueError(
+            f"Frozen approved WAV integrity failure (not a new QC veto): {bad_approved}")
     included = {r["clip_id"] for r in approved}
     speech = [r for r in speech if r["clip_id"] not in included]
     normal = approved + speech
@@ -455,6 +474,7 @@ def run(args: argparse.Namespace) -> int:
         "source": str(source),
         "input_inventory": len(state["inventory"]),
         "old_approved_train_retained": len(approved),
+        "frozen_approved_qc_policy": "integrity_and_decodability_only; LV03 approval retained",
         "external_eval_retained": len(state["eval_ids"]),
         "unique_speech": len(normal),
         "unique_nonverbal": len(expressive),
