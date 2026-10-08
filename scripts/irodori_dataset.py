@@ -58,12 +58,15 @@ def digest(path: Path) -> str:
 
 def audio_info(path: Path) -> tuple[float, int, int]:
     # ffprobe supports the float PCM produced by the LocalVoice pipeline.
-    process = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+    try:
+        process = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
          "-show_entries", "format=duration:stream=sample_rate,channels",
          "-of", "json", str(path)], text=True, capture_output=True,
         encoding="utf-8", check=False,
-    )
+        )
+    except FileNotFoundError:
+        process = subprocess.CompletedProcess(args=[], returncode=127, stdout="", stderr="")
     if process.returncode == 0:
         streams = json.loads(process.stdout).get("streams") or []
         if streams:
@@ -78,7 +81,7 @@ def audio_info(path: Path) -> tuple[float, int, int]:
 
 
 def paths(args) -> tuple[Path, Path]:
-    if not args.profile or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-" for c in args.profile):
+    if not args.profile or args.profile in {".", ".."} or any(c not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-" for c in args.profile):
         raise ValueError("Invalid --profile")
     source = (ROOT / "data" / "training_audio" / args.profile / "audio").resolve()
     legacy = ROOT / "Irodori-TTS" / "outputs" / "localvoice_lora_dataset"
