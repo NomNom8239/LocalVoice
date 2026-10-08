@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "export")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -103,13 +103,14 @@ if ($Action -eq "review") {
     if ($IncludeTagged) { $argsList += "--include-tagged" }
     if ($Candidate) { $argsList += @("--candidate", $Candidate) }
 }
-if ($Action -eq "classify") {
+if ($Action -in @("classify", "evaluate")) {
     $classifierDriver = Join-Path $PSScriptRoot "irodori_style.py"
     $argsList = @($classifierDriver, "--profile", $Speaker,
                   "--limit", [string]$Limit, "--device", $Device)
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
     if ($Group) { $argsList += @("--group", $Group) }
     if ($RetryErrors) { $argsList += "--retry-errors" }
+    if ($Action -eq "evaluate") { $argsList += "--evaluate" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
