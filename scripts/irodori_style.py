@@ -14,9 +14,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from irodori_dataset import (
-    digest, paths, read_csv, review_origin, write_csv,
-)
+if __package__:
+    from .irodori_dataset import digest, paths, read_csv, write_csv
+else:
+    from irodori_dataset import digest, paths, read_csv, write_csv
 
 MODEL_ID = "MIT/ast-finetuned-audioset-10-10-0.4593"
 MODEL_REVISION = "f826b80d28226b62986cc218e5cec390b1096902"
