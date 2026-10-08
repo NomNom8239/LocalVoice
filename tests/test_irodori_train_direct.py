@@ -167,7 +167,7 @@ class DirectLoraTests(unittest.TestCase):
         # This intentionally mismatched old JSONL used to veto an otherwise
         # valid source and tokenizer pass in the previous pipeline.
         (pilot / "hf_audio_dataset_hypothesis.jsonl").write_text(
-            '{"audio": "stale.wav", "text": "stale"}\\n', encoding="utf-8")
+            '{"audio": "stale.wav", "text": "stale"}\n', encoding="utf-8")
         audio = self.root / "voice_video__breath.wav"
         audio.write_bytes(b"synthetic fixture, not for DACVAE")
         inventory_sha = direct.sha256(audio)
@@ -215,8 +215,8 @@ class DirectLoraTests(unittest.TestCase):
         # Token mismatch still blocks; an old JSONL must not bypass it.
         token_path = pilot / "tokenizer_audit.csv"
         token_path.write_text(
-            "clip_id,status,emoji,style\\n"
-            "breath1,pass,🥵,breath\\n", encoding="utf-8")
+            "clip_id,status,emoji,style\n"
+            "breath1,pass,🥵,breath\n", encoding="utf-8")
         self.assertEqual(direct.nonverbal_rows(state, self.root, self.root), [])
         # Forged inventory hash must never produce selected training rows.
         state["inventory"]["breath1"]["sha256"] = "tampered"
