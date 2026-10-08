@@ -80,3 +80,49 @@ class AutoPrepTests(unittest.TestCase):
         self.assertEqual(data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv"), [])
         self.assertEqual(len(data.read_csv(self.out / "nonverbal_experiments.csv")), 1)
 
+    def test_ambiguous_uses_only_style_prompt_then_auto_caption(self):
+        rows = data.read_csv(self.out / "review.csv")
+        rows[0]["source_kind"] = "review_emotion"
+        data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
+        self.put_asr()
+        self.put_style("normal")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["routes"]["ambiguous_vocal_style"], 1)
+        self.assertEqual(result["training_candidates"], 0)
+        original_hash = data.digest(self.wav)
+        with patch("builtins.input", side_effect=["emotion"]) as prompted:
+            auto.resolve(self.args, self.source, self.out)
+        self.assertEqual(prompted.call_count, 1)
+        self.assertEqual(data.digest(self.wav), original_hash)
+        review = data.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(review["decision"], "style_confirmed")
+        self.assertEqual(review["style"], "emotion")
+        self.assertEqual(review["text"], "")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["training_candidates"], 1)
+        output = data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv")[0]
+        self.assertEqual(output["text"], "こんにちは")
+        self.assertEqual(output["caption"], auto.CAPTIONS["emotion"])
+
+    def test_mismatched_hash_never_writes_outputs(self):
+        self.put_asr()
+        file = self.out / "asr_suggestions.csv"
+        rows = data.read_csv(file)
+        rows[0]["sha256"] = "stale"
+        data.write_csv(file, data.ASR_COLUMNS, rows)
+        with self.assertRaisesRegex(ValueError, "Stale ASR"):
+            auto.build(self.args, self.source, self.out)
+        self.assertFalse((self.out / "dataset_for_prepare_manifest_auto.csv").exists())
+
+    def test_rejected_clip_not_exported(self):
+        self.put_asr()
+        rows = data.read_csv(self.out / "review.csv")
+        rows[0].update({"decision": "rejected", "source_kind": "my_voice"})
+        data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
+        report = auto.build(self.args, self.source, self.out)
+        self.assertEqual(report["routes"]["excluded"], 1)
+        self.assertEqual(report["training_candidates"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
