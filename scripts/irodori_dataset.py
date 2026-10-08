@@ -260,6 +260,8 @@ def status(args, source: Path, out: Path) -> None:
     suggestion_path = out / "asr_suggestions.csv"
     suggestions = read_csv(suggestion_path) if suggestion_path.is_file() else []
     asr_counts = Counter(r.get("asr_status", "") for r in suggestions)
+    style_path = out / "style_suggestions.csv"
+    style_suggestions = read_csv(style_path) if style_path.is_file() else []
     actual_errors = [
         r for r in suggestions
         if r.get("asr_status") in ERROR_STATUSES and r.get("error_detail", "").strip()
@@ -279,6 +281,19 @@ def status(args, source: Path, out: Path) -> None:
             "total_attempted": len(suggestions),
             "statuses": dict(asr_counts),
             "old_errors_without_details": old_errors,
+        },
+        "experimental_style_suggestions": {
+            "file": str(style_path) if style_path.is_file() else None,
+            "total_attempted": len(style_suggestions),
+            "statuses": dict(Counter(
+                item.get("status", "") for item in style_suggestions
+            )),
+            "candidate_styles": dict(Counter(
+                item.get("candidate_style", "")
+                for item in style_suggestions
+                if item.get("status") == "suggested"
+            )),
+            "human_verified": False,
         },
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
