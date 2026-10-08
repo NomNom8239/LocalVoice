@@ -221,6 +221,55 @@ they are never silently treated as passing results.
 A PASS proves dataset decoding and DACVAE manifest generation **only**,
 not whether emoji-only text can teach nonverbal speech styles.
 
+## Controlled LoRA feasibility plan after six DACVAE latents
+
+The six DACVAE latents are enough to test *pipeline feasibility*, not model
+accuracy. Do not mix these emoji-only hypotheses into the 1,041 general
+speech candidates. The official v4-Small LoRA config defaults to batch 40
+and 30,000 steps, which is far too large for this pilot.
+
+Stage a read-only **plan** (default, no GPU training, no new files):
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-lora -Speaker Ui_Shigure
+~~~
+
+The planner verifies `codec_attempt_001/result.json` reports full DACVAE
+success and reads the actual six-entry latent manifest. It requires three
+instances for each of exactly two emoji cues. It deterministically selects
+**two train and one held-out latent per cue** (four train, two holdout)
+without altering the original data. This is a deliberately small software
+smoke test, not a statistically valid sample or performance measurement.
+`PLAN_ONLY` prints the proposed paths, model checkpoint status, and
+upstream `train.py` command.
+
+The full-precision **unquantized** Irodori v4.1-Small `model.safetensors`
+must be available locally to train (default:
+`Irodori-TTS/model.safetensors`; override via `-CheckpointPath`).
+The script does **not** download model weights automatically and never
+rebuilds CUDA dependencies. The generated train invocation is capped at
+24 steps, batch size 1, single-process Windows dataloader, AdamW,
+gradient checkpointing and no W&B. These are conservative *initial*
+memory settings; RTX 5060 Ti variants have different VRAM sizes and a
+real pilot may still fail with CUDA OOM. It produces output only under a
+new `nonverbal_pilot/lora_attempt_NNN/` and never touches the 1,041
+speech samples.
+
+Only after checkpoint/version/VRAM checks and by explicit choice can
+a real training smoke run be launched with:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-lora -Speaker Ui_Shigure -CheckpointPath 'F:\path\to\unquantized\model.safetensors' -Run
+~~~
+
+`-Run` is intentional; without it there is no training. Completing
+`train.py` is **not proof** that emoji-only text learns useful
+nonverbal generation. A later inference experiment must compare the
+unaltered base checkpoint against the pilot adapter with identical
+prompts/seeds/reference conditions, testing both nonverbal sound
+and preservation of normal speech. Never promote this smoke adapter
+to production solely because training finishes.
+
 **Validation gates before actual training:**
 1. Check tokenizer acceptance and whether standalone emoji is preserved as a
    meaningful text condition (not just a nonempty string).
