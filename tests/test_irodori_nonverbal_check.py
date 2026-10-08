@@ -11,6 +11,7 @@ from pathlib import Path
 from scripts import irodori_dataset as ds
 from scripts import irodori_nonverbal_check as check
 from scripts import irodori_nonverbal_pilot as pilot
+from scripts import irodori_autoprep as auto
 
 
 class FakeTokenizer:
@@ -52,7 +53,7 @@ class NonverbalCheckTests(unittest.TestCase):
         ds.scan(self.args, self.source, self.out)
         inv = ds.read_csv(self.out / "inventory.csv")[0]
         ds.write_csv(self.out / "nonverbal_experiments.csv",
-                     pilot.EXPERIMENT_COLUMNS, [{
+                     auto.EXPERIMENT_COLUMNS, [{
             "clip_id": inv["clip_id"], "source_path": inv["source_path"],
             "sha256": inv["sha256"], "style": "groan",
             "style_source": "human_tentative",
