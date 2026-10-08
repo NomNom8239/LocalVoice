@@ -313,6 +313,21 @@ RVC-WebUI には `self/` を dataset path として渡します。
 
 Use the repository-owned, read-only dataset workflow instead of unpacking separate ZIP tools. See [docs/irodori_dataset.md](docs/irodori_dataset.md). Existing review data is reused; ASR runs in a separate environment.
 
+## Scripts and LV-03 diagnostic (no Codex)
+
+Executable scripts are centralized under [scripts/](scripts/README.md).
+Do not create a parallel top-level scripts location or move existing
+Irodori/RVC entrypoints without updating the dispatcher and tests.
+
+To run the standalone LV-03 recovery after pulling the work branch:
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv03_no_codex.py
+~~~
+
+This uses existing local Irodori dependencies and writes only fresh attempt folders.
+See [scripts/README.md](scripts/README.md) for grouping, diagnostics and outputs.
 ## Git policy
 
 Git にはコードと設定だけを保存します。音声・モデル・キャッシュ・学習成果物はローカル管理です。
