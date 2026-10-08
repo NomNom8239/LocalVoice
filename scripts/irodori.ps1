@@ -1,12 +1,17 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "export")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "export")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
     [string]$Speaker,
 
     [int]$Limit = 30,
+    [ValidateSet("emotion", "other", "all")]
+    [string]$Kind = "emotion",
+    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio")]
+    [string]$Group,
+    [switch]$NoPlay,
     [switch]$RetryErrors,
     [switch]$Replace,
     [string]$Workspace
@@ -83,6 +88,11 @@ $argsList += $Action
 if ($Action -eq "asr") {
     $argsList += @("--limit", [string]$Limit)
     if ($RetryErrors) { $argsList += "--retry-errors" }
+}
+if ($Action -eq "review") {
+    $argsList += @("--kind", $Kind, "--limit", [string]$Limit)
+    if ($Group) { $argsList += @("--group", $Group) }
+    if ($NoPlay) { $argsList += "--no-play" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
