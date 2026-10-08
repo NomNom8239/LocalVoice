@@ -183,6 +183,20 @@ class StyleBaselineTests(unittest.TestCase):
         self.assertEqual(evaluation[0]["human_style"], "groan")
         self.assertEqual(evaluation[0]["candidate_style"], "laugh")
 
+    def test_style_only_human_decision_evaluates_without_transcript(self):
+        style.run(self.test_args, classifier_factory=self.fake_classifier())
+        review_file = self.workspace / "review.csv"
+        rows = data.read_csv(review_file)
+        rows[0].update({"style": "laugh", "decision": "style_confirmed"})
+        data.write_csv(review_file, data.COLUMNS, rows)
+        original = review_file.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            style.evaluate_pilot(self.test_args)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["confirmed_comparable"], 1)
+        self.assertEqual(result["confirmed_agreement"], "1/1")
+        self.assertEqual(review_file.read_bytes(), original)
+
     def test_evaluation_rejects_changed_prediction_hash(self):
         style.run(self.test_args, classifier_factory=self.fake_classifier())
         path = self.workspace / "style_suggestions.csv"
