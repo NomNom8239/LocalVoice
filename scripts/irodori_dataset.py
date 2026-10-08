@@ -27,9 +27,21 @@ COLUMNS = (
 )
 ASR_COLUMNS = ("clip_id", "sha256", "asr_status", "asr_suggestion",
                "language", "error_detail")
-VALID_STYLES = {"normal", "whisper", "breath", "panting", "groan", "emotion", "other"}
+VALID_STYLES = {"normal", "whisper", "breath", "panting", "groan", "laugh", "emotion", "other"}
 SPECIAL_STYLES = VALID_STYLES - {"normal", "other"}
 ERROR_STATUSES = {"asr_failed", "error_review_audio"}
+STYLE_ALIASES = {
+    "laughter": "laugh",
+    "laughing": "laugh",
+    "笑い": "laugh",
+    "笑い声": "laugh",
+}
+
+
+def normalize_style(value: str) -> str:
+    style = value.strip().lower()
+    return STYLE_ALIASES.get(style, style)
+
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -415,7 +427,7 @@ def review(args, source: Path, out: Path) -> None:
                 entry["notes"] = input("Reason (optional): ").strip()
             else:
                 options = ", ".join(sorted(VALID_STYLES))
-                style = input(f"Style ({options}): ").strip().lower()
+                style = normalize_style(input(f"Style ({options}): "))
                 if style not in VALID_STYLES:
                     print("Unrecognized style; no changes saved for this clip.")
                     continue
@@ -469,7 +481,7 @@ def export(args, source: Path, out: Path) -> None:
         if r.get("speaker_ok", "").lower() != "yes" or r.get("quality", "").lower() != "good":
             reject["not_human_verified"] += 1
             continue
-        style = r.get("style", "").lower().strip()
+        style = normalize_style(r.get("style", ""))
         text = r.get("text", "").strip()
         caption = r.get("caption", "").strip()
         if style not in VALID_STYLES or not text:
