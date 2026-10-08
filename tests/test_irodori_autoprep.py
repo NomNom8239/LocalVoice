@@ -104,6 +104,27 @@ class AutoPrepTests(unittest.TestCase):
         self.assertEqual(output["text"], "こんにちは")
         self.assertEqual(output["caption"], auto.CAPTIONS["emotion"])
 
+    def test_clear_expressive_style_requires_no_human_prompt(self):
+        reviews = data.read_csv(self.out / "review.csv")
+        reviews[0]["source_kind"] = "review_emotion"
+        data.write_csv(self.out / "review.csv", data.COLUMNS, reviews)
+        self.put_asr()
+        self.put_style(candidate="groan")
+        sp = self.out / "style_suggestions.csv"
+        hints = data.read_csv(sp)
+        hints[0].update({"candidate_score": "0.91",
+                         "runner_up_score": "0.13"})
+        from scripts import irodori_style
+        data.write_csv(sp, irodori_style.STYLE_COLUMNS, hints)
+        report = auto.build(self.args, self.source, self.out)
+        self.assertEqual(report["training_candidates"], 1)
+        self.assertEqual(data.read_csv(self.out / "ambiguous_vocal_review.csv"), [])
+        output = data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv")
+        self.assertEqual(output[0]["caption"], auto.CAPTIONS["groan"])
+        audit = data.read_csv(self.out / "auto_preparation_report.csv")
+        self.assertEqual(audit[0]["style_source"], "ast_strong_heuristic_unverified")
+        self.assertEqual(audit[0]["text_source"], "asr_unverified")
+
     def test_mismatched_hash_never_writes_outputs(self):
         self.put_asr()
         file = self.out / "asr_suggestions.csv"
