@@ -6,7 +6,6 @@ Any failed/partial attempt remains separate; original data are untouched.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -15,8 +14,10 @@ import sys
 
 if __package__:
     from .irodori_dataset import ROOT, digest, paths, read_csv
+    from .irodori_ffmpeg_runtime import resolve as resolve_ffmpeg
 else:
     from irodori_dataset import ROOT, digest, paths, read_csv
+    from irodori_ffmpeg_runtime import resolve as resolve_ffmpeg
 
 
 def validate_sources(source: Path, out: Path, profile: str) -> list[dict]:
@@ -120,6 +121,47 @@ def validate_result(manifest: Path, latents: Path, expected: int) -> dict:
             raise RuntimeError("Invalid Irodori latent manifest row")
         targets.add(target)
     return {"latent_entries": len(entries), "verified_latents": len(targets)}
+
+
+def version_info(python: Path, upstream: Path, runner) -> dict:
+    """Inspect wheel metadata without importing the failing native extension."""
+    probe = (
+        "import json; from importlib.metadata import version; "
+        "print(json.dumps({x:version(x) for x in ('torch','torchcodec')}))"
+    )
+    result = runner([str(python), "-c", probe], cwd=str(upstream),
+                    text=True, capture_output=True, check=False)
+    if result.returncode:
+        raise RuntimeError("Cannot inspect Irodori Torch/TorchCodec wheel versions: "
+                           + (result.stderr or "")[-600:])
+    try:
+        versions = json.loads(result.stdout.strip())
+    except (ValueError, TypeError) as exc:
+        raise RuntimeError("Irodori wheel version probe did not return JSON") from exc
+    torch_v = versions.get("torch", "").split("+")[0]
+    codec_v = versions.get("torchcodec", "").split("+")[0]
+    if not (torch_v.startswith("2.10.") and codec_v.startswith("0.10.")):
+        raise RuntimeError(
+            f"Incompatible Torch/TorchCodec pair: {versions}. "
+            "Upstream Irodori expects torch 2.10.x and torchcodec 0.10.x. "
+            "Do not automatically replace the CUDA toolchain."
+        )
+    return versions
+
+
+def native_probe(python: Path, upstream: Path, runner, shared: Path | None = None):
+    imports = ("import torch, torchaudio, datasets, dacvae, torchcodec; "
+               "print('cuda_available=' + str(torch.cuda.is_available()))")
+    if shared is not None:
+        # Python 3.8+ Windows requires adding DLL directories explicitly.
+        preamble = (
+            "import os; _ffmpeg_dll=os.add_dll_directory(" + repr(str(shared)) + "); "
+            "os.environ['PATH']=" + repr(str(shared) + os.pathsep)
+            + "+os.environ.get('PATH',''); "
+        )
+        imports = preamble + imports
+    return runner([str(python), "-c", imports], cwd=str(upstream),
+                  text=True, capture_output=True, check=False)
 
 
 def smoke(args: argparse.Namespace, source: Path, out: Path, *,
