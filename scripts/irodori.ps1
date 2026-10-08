@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -51,6 +51,21 @@ function Invoke-NativeChecked {
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $driver = Join-Path $PSScriptRoot "irodori_dataset.py"
 $python = Join-Path $root ".venv\Scripts\python.exe"
+
+# One no-prompt command: finish ASR, infer acoustic events, produce a
+# machine-generated candidate manifest and an ambiguity-only listening queue.
+if ($Action -eq "auto") {
+    $batch = if ($PSBoundParameters.ContainsKey("Limit")) { $Limit } else { 2000 }
+    if ($batch -lt 1) { throw "-Limit must be >= 1" }
+    $shared = @("-Speaker", $Speaker)
+    if ($Workspace) { $shared += @("-Workspace", $Workspace) }
+    & $PSCommandPath asr @shared -IncludeShort -Limit $batch
+    & $PSCommandPath triage @shared
+    & $PSCommandPath classify @shared -Limit $batch -Device $Device
+    & $PSCommandPath prepare @shared
+    return
+}
+
 
 if ($Action -eq "asr") {
     # Keep faster-whisper and CTranslate2 outside the CUDA/RVC environments.
@@ -111,6 +126,15 @@ if ($Action -in @("classify", "evaluate")) {
     if ($Group) { $argsList += @("--group", $Group) }
     if ($RetryErrors) { $argsList += "--retry-errors" }
     if ($Action -eq "evaluate") { $argsList += "--evaluate" }
+}
+if ($Action -in @("prepare", "resolve")) {
+    $autoDriver = Join-Path $PSScriptRoot "irodori_autoprep.py"
+    $argsList = @($autoDriver, "--profile", $Speaker)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($Action -eq "resolve") {
+        $argsList += @("--resolve", "--limit", [string]$Limit)
+        if ($NoPlay) { $argsList += "--no-play" }
+    }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
