@@ -36,6 +36,7 @@ their imports, PowerShell entrypoints and tests.
 | Base vs LoRA comparison | irodori_nonverbal_compare.py |
 | Audio/ASR comparison | irodori_nonverbal_evaluate.py |
 | Separate speech-retention ASR | irodori_speech_retention_asr.py |
+| **LV-02 dataset expansion and review evidence gate** | **lv02_expand_approved.py** |
 | **LV-03 DACVAE recovery without Codex** | **lv03_no_codex.py** |
 | **LV-04 official LoRA baseline without Codex** | **lv04_no_codex.py** |
 | **LV-05 voice A/B, reference-condition diagnosis** | **lv05_voice_ab.py** |
@@ -191,3 +192,61 @@ lv05_voice_ab_NNN receives multi4_base.wav and multi4_lora.wav with the
 same text, seed, references and duration, plus logs and result.json.
 This is diagnostic inference, not a replacement for the official full
 quality review or a request to retrain.
+
+
+### LV-02 reopened: expand train data rather than freeze at 8
+
+The previous LV-02 freeze verified 1,167 audio files and clean ledger
+partitioning but **did not promote** 1,029 automatically generated,
+unverified training candidates. That 8-item approval freeze was suitable
+for proving the pipeline could run, not a sufficient sample of the target
+voice for practical LoRA quality. Reevaluate before any further training.
+
+The expansion script reads existing review, inventory and automatic
+preparation reports without recomputing ASR or modifying WAVs:
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv02_expand_approved.py audit
+~~~
+
+A new lv02_expansion_NNN directory contains:
+- audit.json: totals grouped by evidence classification and source video
+- classification.csv: all 1,167 rows classified
+- review_queue.csv: first 48 review candidates round-robin by source video
+
+The first review wave is intentionally bounded. ASR text is copied to the
+suggested_text column as a **suggestion**, NEVER into text or an
+approval flag. Candidate provenance (my_voice) is not independent
+speaker verification. Fill the review queue only for genuinely checked
+clips: action=approve, speaker_ok=yes, quality=good,
+text_verified=yes, actual checked text, style, any needed caption,
+and non-empty evidence explaining the human check. Leave uncertain
+clips blank; leave evaluation holdout alone.
+
+To export a *versioned* approved CSV after confirmations:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\lv02_expand_approved.py export --reviewed "F:\AIProjects\LocalVoice\Irodori-TTS\outputs\localvoice_lora_dataset\lv02_expansion_NNN\review_queue.csv"
+~~~
+
+The export retains the prior 8 training clips, appends only explicitly
+confirmed and SHA-checked new clips, and references the independent
+evaluation 3 unchanged. It creates a separate versioned train CSV and
+selection.json with all added IDs; old LV-02, LV-03 and LV-04
+artifacts are untouched. No automatic promotion without voice/text
+evidence, and no full-corpus manual transcription is requested.
+
+When *and only when* expanded approval has been completed, a separate
+new LV-03 attempt can process the new CSV (replace NNN below by the
+actual saved folder). These commands are **not** part of the initial
+audit and should not be run just to generate more model artifacts:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\lv03_no_codex.py --train-csv "F:\AIProjects\LocalVoice\Irodori-TTS\outputs\localvoice_lora_dataset\lv02_expansion_NNN\dataset_for_prepare_manifest_approved_train.csv"
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py --lv03-attempt lv03_dacvae_NNN
+~~~
+
+The LV-04 invocation above is a read-only preflight; --run is a
+separate deliberate training action. Original LV-03 _005 and LV-04
+_001 are preserved as reproducible **technical** baselines.
