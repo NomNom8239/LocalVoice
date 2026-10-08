@@ -154,6 +154,48 @@ experiment with unsupported emoji representations. The JSONL stays in
 `nonverbal_pilot`, isolated from the speech training dataset.
 No manual text entry, Caption entry or sound playback is required.
 
+## DACVAE six-clip manifest smoke test (no LoRA training)
+
+After `nonverbal-check` reports `PASS_TOKENIZATION_ONLY`, verify
+that the six hypothesized local WAV examples can be encoded into actual
+DACVAE latents by **upstream Irodori's prepare_manifest.py**, without
+recreating ASR/style predictions or editing the 1,041 speech examples.
+
+The runner requires a separate `Irodori-TTS/.venv`, configured using
+Irodori's own dependency lock and CUDA tooling. It deliberately does not
+install large model/toolchain dependencies into the LocalVoice `.venv`.
+If that environment does not exist or cannot import the required
+libraries, the command fails with an actionable error.
+
+Preflight only (verify inputs and Irodori environment, no encoding):
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-manifest -Speaker Ui_Shigure -DryRun
+~~~
+
+Run the isolated six-clip DACVAE conversion only after the preflight:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-manifest -Speaker Ui_Shigure
+~~~
+
+It executes the upstream CLI using `--dataset json`,
+`--data-files train=<absolute-jsonl>`, `--audio-column audio`,
+`--text-column text`, `--caption-column caption`,
+`--speaker-column speaker` and `--device cuda`.
+`--normalize-db none` is used **only** to avoid loudness normalization
+dependencies and confounds in this smoke test, not as a production setting.
+No LoRA training or inference is performed.
+
+Each invocation gets a fresh, isolated
+`nonverbal_pilot/codec_attempt_NNN/` directory. The tool validates that
+all six expected `train_manifest.jsonl` entries refer to existing
+positive-length latent tensors under its own `latents/` directory.
+Failed/partial attempts remain traceable with `result.json`;
+they are never silently treated as passing results.
+A PASS proves dataset decoding and DACVAE manifest generation **only**,
+not whether emoji-only text can teach nonverbal speech styles.
+
 **Validation gates before actual training:**
 1. Check tokenizer acceptance and whether standalone emoji is preserved as a
    meaningful text condition (not just a nonempty string).
