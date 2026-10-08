@@ -1,12 +1,16 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "export")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "export")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
     [string]$Speaker,
 
     [int]$Limit = 30,
+    [ValidateSet("auto", "cpu", "cuda")]
+    [string]$Device = "auto",
+    [ValidateSet("normal", "whisper", "laugh", "breath", "panting", "groan", "unknown")]
+    [string]$Candidate,
     [ValidateSet("emotion", "other", "all")]
     [string]$Kind = "emotion",
     [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript")]
@@ -97,6 +101,15 @@ if ($Action -eq "review") {
     if ($Group) { $argsList += @("--group", $Group) }
     if ($NoPlay) { $argsList += "--no-play" }
     if ($IncludeTagged) { $argsList += "--include-tagged" }
+    if ($Candidate) { $argsList += @("--candidate", $Candidate) }
+}
+if ($Action -eq "classify") {
+    $classifierDriver = Join-Path $PSScriptRoot "irodori_style.py"
+    $argsList = @($classifierDriver, "--profile", $Speaker,
+                  "--limit", [string]$Limit, "--device", $Device)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($Group) { $argsList += @("--group", $Group) }
+    if ($RetryErrors) { $argsList += "--retry-errors" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
