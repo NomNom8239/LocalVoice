@@ -25,6 +25,16 @@ jobs:
           python-version: '3.12'
       - name: Install ffprobe/ffmpeg (for fixture metadata only)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Validate PowerShell CLI syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/irodori.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Out-String | Write-Error
+            exit 1
+          }
       - name: Compile dataset and classifier code
         run: python -m compileall -q scripts/irodori_dataset.py scripts/irodori_style.py scripts/irodori_autoprep.py tests/test_irodori_dataset.py tests/test_irodori_style.py tests/test_irodori_autoprep.py
       - name: Run mock-only dataset tests (no model download)
