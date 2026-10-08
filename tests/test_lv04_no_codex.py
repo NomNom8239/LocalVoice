@@ -1,15 +1,13 @@
 """CPU-only tests for the LV-04 official Irodori LoRA runner."""
 from __future__ import annotations
 
-import importlib
 import json
 import tempfile
 import unittest
+import sys
 from pathlib import Path
-from unittest.mock import patch
 
 # Scripts are imported through the same mechanism as direct CLI execution.
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import lv04_no_codex as lv04
 
