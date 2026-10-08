@@ -173,7 +173,7 @@ def asr(args, source: Path, out: Path) -> None:
     selected = []
     for clip in inventory:
         previous = by_id.get(clip["clip_id"])
-        if clip["scan_flag"] != "ok":
+        if clip["scan_flag"] != "ok" and not (args.include_short and clip["scan_flag"] == "short"):
             continue
         if previous is None or (args.retry_errors and previous.get("asr_status") in ERROR_STATUSES):
             selected.append(clip)
@@ -284,7 +284,7 @@ def triage(args, source: Path, out: Path) -> None:
     output: list[dict[str, str | int]] = []
     counts: Counter[str] = Counter()
     for review in reviews:
-        if review.get("decision", "").strip().lower() not in {"pending", "tagged"}:
+        if review.get("decision", "").strip().lower() not in {"pending", "tagged", "needs_text"}:
             continue
         suggestion = suggestions.get(review["clip_id"], {})
         if suggestion and suggestion.get("sha256") != review.get("sha256"):
@@ -293,8 +293,10 @@ def triage(args, source: Path, out: Path) -> None:
         text = review.get("asr_suggestion") or suggestion.get("asr_suggestion", "")
         text = text.strip()
         flag = review.get("scan_flag", "")
-        if review.get("decision", "").strip().lower() == "tagged":
-            rank, group, why = (6, "tagged_nonverbal", "Tagged for later transcription/manifest review")
+        if review.get("decision", "").strip().lower() == "needs_text":
+            rank, group, why = (6, "needs_transcript", "Voice/style verified; transcription still needs confirmation")
+        elif review.get("decision", "").strip().lower() == "tagged":
+            rank, group, why = (7, "tagged_nonverbal", "Tagged for later transcription/manifest review")
         elif flag in {"unreadable", "low_sample_rate"}:
             rank, group, why = (0, "invalid_audio", "Inspect or reject corrupted/unsupported audio")
         elif flag == "short":
@@ -331,6 +333,7 @@ def triage(args, source: Path, out: Path) -> None:
     print(json.dumps({
         "pending": sum(r["decision"] == "pending" for r in output),
         "tagged_for_later": sum(r["decision"] == "tagged" for r in output),
+        "needs_transcript": sum(r["decision"] == "needs_text" for r in output),
         "queue_total": len(output),
         "groups": dict(counts)
     }, ensure_ascii=False, indent=2))
@@ -373,9 +376,11 @@ def review(args, source: Path, out: Path) -> None:
         if item.get("source_path") != entry.get("source_path"):
             raise ValueError(f"Stale triage path: {item['clip_id']}")
         decision = entry.get("decision", "").strip().lower()
-        if decision not in {"pending", "tagged"}:
+        if decision not in {"pending", "tagged", "needs_text"}:
             continue
         if decision == "tagged" and not args.include_tagged:
+            continue
+        if decision == "needs_text" and args.group != "needs_transcript":
             continue
         origin = review_origin(entry)
         if args.kind == "emotion" and origin != "review_emotion":
@@ -437,22 +442,31 @@ def review(args, source: Path, out: Path) -> None:
                     entry["decision"] = "tagged"
                     print("Tagged for later review; not approved for training.")
                 else:
-                    prompt = f"Verified transcription [{hint}]: " if hint else "Verified transcription: "
-                    verified = input(prompt).strip() or hint
-                    if not verified:
-                        print("Missing verified text. Use [t] tag-only for nonverbal clips.")
-                        continue
-                    caption = input("Verified caption (required for special styles; Enter for normal): ").strip()
-                    if style in SPECIAL_STYLES and not caption:
-                        print("Caption is required for special delivery; no approval saved.")
-                        continue
+                    if hint:
+                        print("ASR text is unverified. Type corrected text or '=' to explicitly confirm the suggestion.")
+                    print("Press Enter to save the speaker/style check and defer transcription.")
+                    prompt = f"Verified transcription [{hint}]: " if hint else "Verified transcription (optional now): "
+                    typed = input(prompt).strip()
+                    verified = hint if typed == "=" and hint else (typed if typed != "=" else "")
+                    caption = ""
+                    if verified:
+                        caption = input("Verified caption (required for special styles; Enter for normal): ").strip()
+                        if style in SPECIAL_STYLES and not caption:
+                            print("Caption is required for special delivery; nothing saved.")
+                            continue
                     if input("Confirm speaker and quality good? [y/N]: ").strip().lower() != "y":
-                        print("Not approved; review stays pending.")
+                        print("Not confirmed; no approval saved.")
                         continue
                     entry.update({
-                        "text": verified, "caption": caption, "style": style,
-                        "speaker_ok": "yes", "quality": "good", "decision": "approved",
+                        "text": verified,
+                        "caption": caption if verified else "",
+                        "style": style,
+                        "speaker_ok": "yes",
+                        "quality": "good",
+                        "decision": "approved" if verified else "needs_text",
                     })
+                    if not verified:
+                        print("Saved voice/style confirmation as needs_text; NOT export-ready.")
             write_csv(review_path, columns, reviews)
             done += 1
             print(f"Saved: {entry['decision']} / {entry.get('style', '')} ({done} in this session)")
@@ -518,11 +532,12 @@ def main() -> int:
     p.add_argument("--device", default="cpu", choices=("cpu", "cuda"))
     p.add_argument("--compute-type", default="int8")
     p.add_argument("--retry-errors", action="store_true")
+    p.add_argument("--include-short", action="store_true", help="Also attempt ASR on short clips; results still require listening")
     p = subs.add_parser("review")
     p.add_argument("--kind", choices=("emotion", "other", "all"), default="emotion")
     p.add_argument("--group", choices=(
         "short_audio", "no_detected_text", "expressive_or_unclear",
-        "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal"
+        "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript"
     ))
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--no-play", action="store_true")
