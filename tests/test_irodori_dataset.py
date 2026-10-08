@@ -115,7 +115,7 @@ class DatasetTests(unittest.TestCase):
         fake.WhisperModel = FakeModel
         args = argparse.Namespace(
             model="small", device="cpu", compute_type="int8",
-            retry_errors=False, limit=1,
+            retry_errors=False, limit=1, include_short=False,
         )
         with patch.dict(sys.modules, {"faster_whisper": fake}):
             mod.asr(args, self.source, self.out)
@@ -257,6 +257,72 @@ class DatasetTests(unittest.TestCase):
             mod.read_csv(self.out / "dataset_for_prepare_manifest.csv")[0]["caption"],
             "笑いながら話す",
         )
+
+    def test_normal_speech_review_without_text_is_saved_for_later(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        review_args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False,
+        )
+        with patch("builtins.input", side_effect=["a", "normal", "", "y"]):
+            mod.review(review_args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["decision"], "needs_text")
+        self.assertEqual(row["style"], "normal")
+        self.assertEqual(row["speaker_ok"], "yes")
+        self.assertEqual(row["quality"], "good")
+        self.assertEqual(row["text"], "")
+        self.assertEqual(mod.digest(self.wav), self.original)
+        with self.assertRaises(ValueError):
+            mod.export(self.args, self.source, self.out)
+
+        mod.triage(self.args, self.source, self.out)
+        queue = mod.read_csv(self.out / "triage.csv")
+        self.assertEqual(queue[0]["review_group"], "needs_transcript")
+
+        review_args.group = "needs_transcript"
+        with patch("builtins.input", side_effect=[
+            "a", "normal", "こんにちは", "", "y"
+        ]):
+            mod.review(review_args, self.source, self.out)
+        self.assertEqual(
+            mod.read_csv(self.out / "review.csv")[0]["decision"], "approved",
+        )
+        mod.export(self.args, self.source, self.out)
+
+    def test_short_wavs_are_not_asr_transcribed_without_opt_in(self):
+        with wave.open(str(self.wav), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(16000)
+            w.writeframes(b"\\x00\\x00" * 8000)
+        mod.scan(self.args, self.source, self.out)
+        row = mod.read_csv(self.out / "inventory.csv")[0]
+        self.assertEqual(row["scan_flag"], "short")
+        model_args = argparse.Namespace(
+            model="small", device="cpu", compute_type="int8",
+            retry_errors=False, limit=1, include_short=False,
+        )
+        mod.asr(model_args, self.source, self.out)
+        self.assertFalse((self.out / "asr_suggestions.csv").exists())
+
+        class FakeModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def transcribe(self, *args, **kwargs):
+                return ([types.SimpleNamespace(text="はい")],
+                        types.SimpleNamespace(language="ja"))
+
+        fake = types.ModuleType("faster_whisper")
+        fake.WhisperModel = FakeModel
+        model_args.include_short = True
+        with patch.dict(sys.modules, {"faster_whisper": fake}):
+            mod.asr(model_args, self.source, self.out)
+        updated = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(updated["asr_suggestion"], "はい")
+        self.assertEqual(updated["decision"], "pending")
 
     def test_interactive_review_fails_if_audio_changed(self):
         mod.scan(self.args, self.source, self.out)
