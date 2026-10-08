@@ -256,17 +256,29 @@ def plan(args: argparse.Namespace, source: Path, out: Path, *,
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     process = runner(cmd, cwd=str(upstream), text=True, check=False)
+    adapter = output / "checkpoint_final"
+    adapter_valid = ((adapter / "adapter_config.json").is_file()
+                     and any((adapter / x).is_file()
+                             for x in ("adapter_model.safetensors", "adapter_model.bin")))
     if process.returncode != 0:
         report["status"] = "TRAIN_FAILED"
+        report["lora_training"] = "FAILED"
         report["exit_code"] = process.returncode
+    elif not adapter_valid:
+        report["status"] = "TRAIN_EXITED_ZERO_BUT_ADAPTER_MISSING"
+        report["lora_training"] = "FAILED_OUTPUT_VALIDATION"
     else:
         report["status"] = "TRAIN_COMMAND_EXITED_ZERO_NOT_QUALITY_VALIDATED"
+        report["lora_training"] = "COMPLETED_COMMAND"
+        report["adapter_path"] = str(adapter)
     (attempt / "result.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if process.returncode:
         raise RuntimeError(f"Irodori LoRA pilot training failed (exit {process.returncode})")
+    if not adapter_valid:
+        raise RuntimeError(f"Irodori LoRA adapter checkpoint missing after training: {adapter}")
     return report
 
 
