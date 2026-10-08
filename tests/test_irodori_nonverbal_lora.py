@@ -1,12 +1,15 @@
 """Model-free pilot planning/execute simulations for nonverbal LoRA."""
 import argparse
 import contextlib
+import hashlib
 import io
 import json
 import os
+import sys
 from pathlib import Path
 import tempfile
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 import unittest
 import wave
 
@@ -125,6 +128,43 @@ class NonverbalLoRATests(unittest.TestCase):
         latent.unlink()
         with self.assertRaisesRegex(RuntimeError, "manifest row"):
             lora.plan(self.args, self.source, self.out, root=self.root)
+
+    def test_checkpoint_explicit_fetch_is_sha_verified_and_does_not_train(self):
+        self.args.fetch_checkpoint = True
+        checkpoint = self.root / "downloaded-model.safetensors"
+        checkpoint.write_bytes(b"fake-official-weights")
+        digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+        calls = []
+        mocked = ModuleType("huggingface_hub")
+        mocked.try_to_load_from_cache = lambda *a, **kw: None
+
+        def download(*a, **kw):
+            calls.append((a, kw))
+            return str(checkpoint)
+
+        mocked.hf_hub_download = download
+        with patch.dict(sys.modules, {"huggingface_hub": mocked}), patch.object(
+            lora, "CHECKPOINT_SHA256", digest
+        ):
+            with contextlib.redirect_stdout(io.StringIO()):
+                report = lora.plan(self.args, self.source, self.out, root=self.root)
+        self.assertEqual(report["status"], "PLAN_ONLY")
+        self.assertTrue(report["checkpoint_exists"])
+        self.assertEqual(report["checkpoint_source"], "official_hf_sha256_verified")
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(Path(report["output"]).exists())
+
+    def test_checkpoint_bad_hash_fails_before_training(self):
+        self.args.fetch_checkpoint = True
+        checkpoint = self.root / "bad.safetensors"
+        checkpoint.write_bytes(b"wrong-model")
+        mocked = ModuleType("huggingface_hub")
+        mocked.try_to_load_from_cache = lambda *a, **kw: None
+        mocked.hf_hub_download = lambda **kw: str(checkpoint)
+        with patch.dict(sys.modules, {"huggingface_hub": mocked}):
+            with self.assertRaisesRegex(RuntimeError, "SHA-256 mismatch"):
+                lora.plan(self.args, self.source, self.out, root=self.root)
+        self.assertFalse(list((self.out / "nonverbal_pilot").glob("lora_attempt_*")))
 
     def test_no_checkpoint_blocks_opted_in_training(self):
         self.args.run = True
