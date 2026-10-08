@@ -3,6 +3,8 @@ import argparse
 import contextlib
 import io
 import json
+import shutil
+import struct
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -171,6 +173,23 @@ class PairedInferenceTests(unittest.TestCase):
                 runner=self.fake_runner
             )
         self.assertEqual(len(self.runs), 0)
+
+    def test_inspect_ieee_float_wav_using_ffprobe(self):
+        if not shutil.which("ffprobe"):
+            self.skipTest("ffprobe needed for float WAV inspection")
+        # Minimal IEEE float WAV. Python 3.10 wave.open rejects format=3.
+        audio = struct.pack("<f", 0.15) * 1600
+        riff = (
+            b"WAVE"
+            + b"fmt " + struct.pack("<IHHIIHH", 16, 3, 1, 16000,
+                                      64000, 4, 32)
+            + b"data" + struct.pack("<I", len(audio)) + audio
+        )
+        path = self.root / "float32.wav"
+        path.write_bytes(b"RIFF" + struct.pack("<I", len(riff)) + riff)
+        metadata = compare.inspect_wav(path)
+        self.assertEqual(metadata["sample_rate"], 16000)
+        self.assertAlmostEqual(metadata["duration_sec"], 0.1, places=2)
 
     def test_reference_uses_resolved_provenance_not_empty_inventory_column(self):
         reference, digest, reason = compare.choose_speech_reference(
