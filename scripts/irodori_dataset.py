@@ -198,6 +198,9 @@ def asr(args, source: Path, out: Path) -> None:
         write_csv(saved, ASR_COLUMNS, list(by_id.values()))
         if failures >= 3:
             raise RuntimeError("Three consecutive ASR errors; inspect error_detail")
+    # ASR never approves or edits human-verified text. Merge hints automatically
+    # so 'status' reflects new results without a separate command.
+    merge(None, None, out)
     print(f"ASR suggestion file: {saved} ({len(selected)} attempted)")
 
 
@@ -221,18 +224,35 @@ def merge(args, source: Path, out: Path) -> None:
 def status(args, source: Path, out: Path) -> None:
     del args, source
     rows = read_csv(out / "review.csv")
+    suggestion_path = out / "asr_suggestions.csv"
+    suggestions = read_csv(suggestion_path) if suggestion_path.is_file() else []
+    asr_counts = Counter(r.get("asr_status", "") for r in suggestions)
+    actual_errors = [
+        r for r in suggestions
+        if r.get("asr_status") in ERROR_STATUSES and r.get("error_detail", "").strip()
+    ]
+    old_errors = sum(
+        1 for r in suggestions
+        if r.get("asr_status") in ERROR_STATUSES and not r.get("error_detail", "").strip()
+    )
     report = {
-        "workspace": str(out), "total": len(rows),
+        "workspace": str(out),
+        "total": len(rows),
         "scan_flags": dict(Counter(r.get("scan_flag", "") for r in rows)),
         "decisions": dict(Counter(r.get("decision", "") for r in rows)),
-        "asr": dict(Counter(r.get("asr_status", "") for r in rows)),
+        "review_asr_status": dict(Counter(r.get("asr_status", "") for r in rows)),
+        "asr_suggestions": {
+            "file": str(suggestion_path) if suggestion_path.is_file() else None,
+            "total_attempted": len(suggestions),
+            "statuses": dict(asr_counts),
+            "old_errors_without_details": old_errors,
+        },
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
-    suggestion_path = out / "asr_suggestions.csv"
-    if suggestion_path.exists():
-        errors = [r for r in read_csv(suggestion_path) if r.get("asr_status") in ERROR_STATUSES]
-        for row in errors[:3]:
-            print(f"ASR ERROR {row['clip_id']}: {row.get('error_detail') or '(old record lacks details)'}")
+    for row in actual_errors[:3]:
+        print(f"ASR ERROR {row['clip_id']}: {row['error_detail']}")
+    if old_errors:
+        print(f"Old ASR failures without error details: {old_errors} (use -RetryErrors)")
 
 
 def export(args, source: Path, out: Path) -> None:
