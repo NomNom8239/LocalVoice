@@ -5,6 +5,8 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 
 if __package__:
@@ -95,14 +97,14 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
         origin = review_origin(row)
         style, state = sound_hint(st)
         human_style = normalize_style(row.get("style", ""))
-        confirmed = decision in {"approved", "needs_text", "needs_caption"}
+        confirmed = decision in {"approved", "needs_text", "needs_caption", "style_confirmed"}
         tentative = decision == "tagged"
         if (confirmed or tentative) and human_style in CAPTIONS:
             style = human_style
             style_source = "human_confirmed" if confirmed else "human_tentative"
         else:
             style_source = "ast_experimental" if st else "not_available"
-        verified_text = row.get("text", "").strip() if confirmed else ""
+        verified_text = row.get("text", "").strip() if decision in {"approved", "needs_text", "needs_caption"} else ""
         asr_text = ar.get("asr_suggestion", "").strip() if ar.get("asr_status") == "suggested" else ""
         content = verified_text or asr_text
         text_source = ("human_verified" if verified_text else
