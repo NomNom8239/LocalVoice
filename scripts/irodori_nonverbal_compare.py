@@ -16,14 +16,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import wave
 
 if __package__:
-    from .irodori_dataset import ROOT, digest, paths, read_csv
+    from .irodori_dataset import ROOT, audio_info, digest, paths, read_csv
     from .irodori_nonverbal_lora import load_jsonl, checkpoint_path
     from .irodori_nonverbal_manifest import environment
 else:
-    from irodori_dataset import ROOT, digest, paths, read_csv
+    from irodori_dataset import ROOT, audio_info, digest, paths, read_csv
     from irodori_nonverbal_lora import load_jsonl, checkpoint_path
     from irodori_nonverbal_manifest import environment
 
@@ -193,16 +192,16 @@ def inference_command(python: Path, upstream: Path, checkpoint: Path,
 def inspect_wav(path: Path) -> dict:
     if not path.is_file() or path.stat().st_size <= 44:
         raise RuntimeError(f"Inference output WAV absent or empty: {path}")
+    # Irodori writes float PCM when torchaudio.save is available.
+    # wave.open() does not accept common IEEE FLOAT WAV (format 3) on
+    # Python 3.10/3.12; existing audio_info() uses ffprobe first.
     try:
-        with wave.open(str(path), "rb") as handle:
-            rate = handle.getframerate()
-            frames = handle.getnframes()
-            chans = handle.getnchannels()
-    except (OSError, EOFError, wave.Error) as exc:
+        duration, rate, chans = audio_info(path)
+    except (OSError, ValueError, KeyError, EOFError) as exc:
         raise RuntimeError(f"Invalid inference WAV: {path}") from exc
-    if rate <= 0 or frames <= 0 or chans <= 0:
+    if duration <= 0 or rate <= 0 or chans <= 0:
         raise RuntimeError(f"Invalid empty audio output: {path}")
-    return {"duration_sec": round(frames / rate, 3),
+    return {"duration_sec": round(duration, 3),
             "sample_rate": rate, "channels": chans,
             "bytes": path.stat().st_size}
 
