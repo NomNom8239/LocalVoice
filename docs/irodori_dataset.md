@@ -46,9 +46,35 @@ the Irodori transcription/style/quality still need human verification.
 ```
 
 Audio plays through `ffplay` (as in the existing `review_training_audio.py`).
-Controls: `a` = approve with verified text/style/caption and explicit
-speaker/quality confirmation; `t` = save only a tentative nonverbal style
-tag; `n` = reject; `r` = replay; `s` = skip; `q` = quit.
+Controls: `a` = confirm speaker/quality/style; `t` = save only a
+tentative nonverbal style tag; `n` = reject; `r` = replay; `s` = skip;
+`q` = quit.
+
+**No transcript is required during listening review.** With `a`, press
+Enter at the verified transcription prompt to save `decision=needs_text`
+(speaker and style checked, *not yet eligible for LoRA export*). If you
+can verify spoken words, enter them to save `decision=approved`.
+For an ASR suggestion, `=` explicitly confirms the displayed suggestion;
+simply pressing Enter defers rather than silently adopting ASR output.
+Nonverbal laughter, breathing or groaning remains `t` tagged; never invent
+speech to satisfy training.
+
+Later, re-run `triage` and use this to complete deferred transcripts:
+
+```powershell
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind emotion -Group needs_transcript -Limit 20
+```
+
+Optional ASR for the 208 short clips can produce **suggestions** (including
+possible hallucinations), but never approves them:
+
+```powershell
+.\scripts\irodori.ps1 asr -Speaker Ui_Shigure -IncludeShort -Limit 20
+.\scripts\irodori.ps1 triage -Speaker Ui_Shigure
+```
+
+Without `-IncludeShort`, the original 959 normal-length candidates are the
+only ASR targets; successful existing ASR results are retained without rerun.
 
 
 For laughter, the dedicated style is `laugh`. Both `laugh` and `laughter`
@@ -67,8 +93,8 @@ with `triage`, then use `-IncludeTagged` (and optionally
 .\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind emotion -Group tagged_nonverbal -IncludeTagged -Limit 20
 ```
 
-Clips without a verified transcript cannot be approved for the current
-intermediate export. In particular, do **not** invent utterance text for
+Clips without a verified transcript can be classified and confirmed as
+`needs_text`, but cannot enter the current intermediate export. In particular, do **not** invent utterance text for
 breath/groan-only clips. Tag them until the upstream Irodori representation
 for nonverbal data has been validated.
 
