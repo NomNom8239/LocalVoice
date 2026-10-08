@@ -286,7 +286,7 @@ def triage(args, source: Path, out: Path) -> None:
             rank, group, why = (1, "short_audio", "Listen: short clip, ASR not run")
         elif status == "no_detected_text_review_audio":
             rank, group, why = (2, "no_detected_text", "Listen: could be silence, noise or nonverbal voice")
-        elif len(text) < 5 or re.search(r"(.)\\1{3,}", text):
+        elif len(text) < 5 or re.search(r"(.)\1{3,}", text):
             rank, group, why = (3, "expressive_or_unclear", "Listen: very short or repeated text; label manually")
         elif len(text) < 10:
             rank, group, why = (4, "short_transcript", "Check brief utterance and exact wording")
