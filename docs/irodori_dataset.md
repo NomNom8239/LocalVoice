@@ -42,12 +42,28 @@ ASR output is automatic and **may be wrong**, so the candidate report is
 honest about what is not human verified. No individual manual transcript
 or caption entry is required to run this pipeline.
 
-Curated normal voice with ASR enters the candidate set if no acoustic
-evidence contradicts the default. Review-emotion provenance is **not**
-treated as a precise vocal style; its unclear cases go to the exception
-queue. Strong contradictions, uncertain acoustic events, and unknown
-styles are excluded pending classification. Invalid/rejected recordings
-are excluded and stale file hashes stop processing before output writes.
+**Updated routing after full-corpus AST inference:** AudioSet AST values
+are uncalibrated. They must **not** trigger a human listening task just
+because a raw score is low or the top label is unknown. For ASR-detected
+speech, curated `my_voice`/`review_approved` defaults to `normal`;
+curated `review_emotion` defaults to a broad `emotion` caption. Only
+very strong, distinct non-normal acoustic evidence overrides that default,
+and its source stays labeled `ast_strong_heuristic_unverified`. These
+defaults are inferred from *collection provenance*, not presented as
+new human verification.
+
+Without detected speech, a supported nonverbal prediction is retained
+in the separate experimental dataset; unknown / weak evidence goes to
+`deferred_unresolved_audio`, **not** the user's manual queue. Only
+conflicting nonverbal sound evidence goes to
+`ambiguous_vocal_review.csv` for optional targeted listening.
+The JSON summary now contains `manual_style_review_cases` and
+`reason_counts`, so an unexpectedly large human queue is visible.
+Rejected/invalid recordings stay excluded; stale source hashes stop
+processing before output writes.
+
+Run `prepare` again after updating the code; existing AST/ASR
+predictions are reused without GPU inference.
 
 ## The only interactive workflow
 
