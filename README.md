@@ -328,6 +328,25 @@ git pull --ff-only origin feature/irodori-lora-dataset-cli
 
 This uses existing local Irodori dependencies and writes only fresh attempt folders.
 See [scripts/README.md](scripts/README.md) for grouping, diagnostics and outputs.
+## LV-04 official LoRA baseline (Codex-free)
+
+After LV-03's DACVAE result is confirmed, see the [script catalog](scripts/README.md)
+for a one-command preflight and an explicit official training run.
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py
+# After preflight PASS, opt in to local training:
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py --run
+~~~
+
+This only uses the eight LV-02 approved training sources (7 training / 1
+internal validation); the three independent evaluations remain held out.
+The official trainer runs in Irodori-TTS/.venv and saves outputs into a fresh
+lv04_lora_NNN directory. A non-explicit inference smoke test follows a
+successful adapter build. This is *not* a claim of voice quality or suitability
+for any particular vocal style, which requires later evaluation.
+
 ## Git policy
 
 Git にはコードと設定だけを保存します。音声・モデル・キャッシュ・学習成果物はローカル管理です。
