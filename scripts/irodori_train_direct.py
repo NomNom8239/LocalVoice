@@ -105,53 +105,67 @@ def source_rows(state: dict) -> tuple[list[dict], list[dict], Counter]:
 
 
 def nonverbal_rows(state: dict, source: Path, ws: Path) -> list[dict]:
-    """Only exact pilot hypotheses already passed official tokenizer checks.
+    """Rebuild candidates from their current pilot audit and tokenizer evidence.
 
-    No invented ASR text for empty-text nonverbal WAVs.
+    The old hypothesis JSONL is a *derived cache*. Requiring it to match an
+    updated audit blocked the direct pipeline even when the original WAV,
+    clip identity and token verification were still valid. This runner
+    encodes fresh CSV rows, so it does not consume that cached JSONL.
     """
-    pilot_path = ws / "nonverbal_pilot"
-    if not all((pilot_path / x).is_file() for x in (
-            "hf_audio_dataset_hypothesis.jsonl", "audit.csv", "tokenizer_audit.csv")):
+    from lv02_expand_approved import index, load_csv
+
+    pilot = ws / "nonverbal_pilot"
+    audit_file = pilot / "audit.csv"
+    token_file = pilot / "tokenizer_audit.csv"
+    if not audit_file.is_file() or not token_file.is_file():
         return []
-    from irodori_nonverbal_manifest import validate_sources
-    from lv02_expand_approved import load_csv, index
-    validated = validate_sources(source, ws, SPEAKER)
-    approved = index(load_csv(pilot_path / "audit.csv"), "clip_id", "nonverbal pilot audit")
+
+    audits = load_csv(audit_file)
+    tokens = index(load_csv(token_file), "clip_id", "nonverbal tokenizer audit")
+    seen_paths = set()
     results = []
-    for row in validated:
-        path = Path(row["audio"]).resolve()
-        inv = next((r for r in state["inventory"].values()
-                    if Path(r["source_path"]).resolve() == path), None)
+    for evidence in audits:
+        if evidence.get("status") != "pilot_hypothesis":
+            continue
+        cid = evidence.get("clip_id", "")
+        inv = state["inventory"].get(cid)
         if inv is None:
-            raise ValueError(f"Nonverbal pilot WAV outside inventory: {path}")
-        cid = inv["clip_id"]
-        audit = approved.get(cid, {})
-        reviewed = state["review"][cid]
-        style = audit.get("style")
+            raise ValueError(f"Pilot clip_id absent from inventory: {cid}")
+        path = Path(inv["source_path"]).resolve()
+        reported = Path(evidence.get("source_path", "")).resolve()
+        if (path != reported or evidence.get("sha256") != inv["sha256"]
+                or path in seen_paths or source not in path.parents):
+            raise ValueError(f"Pilot source identity mismatch: {cid}")
+        seen_paths.add(path)
+
+        token = tokens.get(cid)
+        style = evidence.get("style", "").strip()
+        emoji = evidence.get("experimental_text", "").strip()
+        caption = evidence.get("caption", "").strip()
+        # Reject unverified tokenization, stale token rows and missing captions.
+        # Keep an unrelated stale *JSONL cache* from vetoing live audit evidence.
+        if (token is None or token.get("status") != "pass"
+                or token.get("emoji") != emoji
+                or token.get("style") != style
+                or style not in VOICE_STYLES or not emoji or not caption):
+            continue
         if (cid in state["train_ids"] or cid in state["eval_ids"]
                 or video(inv) in state["eval_videos"]):
             continue
-        if style not in VOICE_STYLES or not row.get("text") or not row.get("caption"):
-            continue
-        # The previous nonverbal pilot already checked exact source SHA and
-        # tokenizer compatibility, not necessarily human style confirmation.
-        # Include experimental cues for the explicitly requested trial,
-        # recording their provenance rather than misreporting them as verified.
+        reviewed = state["review"][cid]
         if (state["auto"][cid].get("source_kind") not in
                 ("my_voice", "review_approved", "review_emotion") and
                 reviewed.get("speaker_ok") != "yes"):
             continue
         label_level = ("human" if
-                       audit.get("style_source") == "human_confirmed"
+                       evidence.get("style_source") == "human_confirmed"
                        else "experimental")
         results.append({
-            "audio": str(path), "text": row["text"],
-            "caption": row["caption"], "speaker": SPEAKER,
-            "clip_id": cid, "sha256": inv["sha256"],
+            "audio": str(path), "text": emoji, "caption": caption,
+            "speaker": SPEAKER, "clip_id": cid, "sha256": inv["sha256"],
             "kind": f"{label_level}_nonverbal_{style}",
         })
     return results
-
 
 def verified_wave_quality(
     rows: list[dict], inv_by_clip: dict, *, strict_acoustic_gate: bool = True,
@@ -501,8 +515,8 @@ def run(args: argparse.Namespace) -> int:
         "nonverbal_quality_verified": False,
         "target_vocalizations": sorted({x["kind"] for x in expressive}),
         "nonverbal_label_status": (
-            "Pilot emoji/caption hypotheses are tokenizer-checked; "
-            "experimental cues are NOT validated descriptions of the WAV."),
+            "Rebuilt from pilot audit + tokenizer_audit (not cached hypothesis JSONL). "
+            "Emoji and captions are experimental hypotheses, not verified sound labels."),
         "source_transcript_caveat": (
             "Non-previously-approved normal rows use existing ASR suggestions; "
             "not all texts have a human transcript check."),
