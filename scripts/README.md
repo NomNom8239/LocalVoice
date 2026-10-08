@@ -37,6 +37,7 @@ their imports, PowerShell entrypoints and tests.
 | Audio/ASR comparison | irodori_nonverbal_evaluate.py |
 | Separate speech-retention ASR | irodori_speech_retention_asr.py |
 | **LV-03 DACVAE recovery without Codex** | **lv03_no_codex.py** |
+| **LV-04 official LoRA baseline without Codex** | **lv04_no_codex.py** |
 
 Existing script paths are preserved because the dispatcher and tests refer to
 them. Documentation and tests stay in docs/ and tests/, not in scripts/.
@@ -67,3 +68,50 @@ To stop after the single diagnostic:
 ~~~
 
 For other Irodori commands, see [dataset documentation](../docs/irodori_dataset.md).
+
+
+### LV-04: controlled official LoRA baseline (no Codex)
+
+LV-03 must already have passed in lv03_dacvae_005 with exactly 8 approved
+source clips and 3 independent evaluation clips. The user has confirmed
+permission for local, private use. The approved 8 are split **7 train /
+1 internal validation**, while the 3 external evaluations remain outside
+the train.py manifest. With only eight approved examples, this is a
+small-data baseline and not a voice-quality guarantee.
+
+From the root of LocalVoice:
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py
+~~~
+
+The first command is a **read-only preflight** checking official Irodori
+revision, source identity/SHA, LV-03 result, train manifest, config,
+and the full-precision unquantized base-model SHA256. It does not download
+weights, touch output attempts, train or infer.
+
+If preflight passes, run the one baseline:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py --run
+~~~
+
+This runs the *official* Irodori train.py using existing Irodori-TTS/.venv,
+BF16, batch 1, accumulation 2, grad checkpointing, AdamW, 120 steps,
+cosine LR with 8 warmup steps, validation every 20 steps, checkpoints every
+30 steps, and no WandB. VRAM usage is not guaranteed: on an OOM, check
+the captured train.log and avoid silently replacing core components.
+
+The first free lv04_lora_NNN directory receives the full immutable plan,
+upstream YAML copy, training log and an adapter under
+adapter/checkpoint_final/. If training succeeds, the script validates
+the adapter's PEFT files and uses upstream infer.py to attempt a short,
+non-explicit Japanese inference smoke test. result.json distinguishes
+adapter success from inference success; it never claims audio quality was
+human validated. The script does not auto-resume an interrupted run or
+reuse prior failed output directories.
+
+Only pass --resume PATH when explicitly continuing a compatible
+official LoRA checkpoint directory; otherwise a new run always starts
+from the SHA-verified full base checkpoint.
