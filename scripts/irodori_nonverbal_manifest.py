@@ -165,23 +165,38 @@ def native_probe(python: Path, upstream: Path, runner, shared: Path | None = Non
 
 
 def smoke(args: argparse.Namespace, source: Path, out: Path, *,
-          runner=subprocess.run, root: Path = ROOT) -> dict:
+          runner=subprocess.run, root: Path = ROOT,
+          shared_resolver=resolve_ffmpeg,
+          windows: bool | None = None) -> dict:
     rows = validate_sources(source, out, args.profile)
     upstream, python = environment(root)
     dataset = out / "nonverbal_pilot" / "hf_audio_dataset_hypothesis.jsonl"
-    # No import side-effects from the large upstream dependencies in LocalVoice.
-    preflight = runner(
-        [str(python), "-c",
-         "import torch, torchaudio, datasets, dacvae, torchcodec; "
-         "print('cuda_available=' + str(torch.cuda.is_available()))"],
-        cwd=str(upstream), text=True, capture_output=True, check=False,
-    )
+    is_windows = os.name == "nt" if windows is None else windows
+    shared = None
+
+    # First try the existing Irodori environment untouched. Only bootstrap
+    # a private FFmpeg shared runtime if the native TorchCodec DLL is missing.
+    preflight = native_probe(python, upstream, runner)
     if preflight.returncode != 0:
-        raise RuntimeError(
-            "Irodori-TTS .venv dependencies are missing/incompatible. "
-            "Repair its own environment (not LocalVoice .venv): "
-            + (preflight.stderr or preflight.stdout)[-1400:]
-        )
+        err = preflight.stderr or preflight.stdout
+        if is_windows and ("torchcodec" in err.lower()
+                           or "libtorchcodec" in err.lower()):
+            versions = version_info(python, upstream, runner)
+            shared = shared_resolver(upstream, getattr(args, "ffmpeg_shared_bin", None))
+            preflight = native_probe(python, upstream, runner, shared)
+            if preflight.returncode:
+                raise RuntimeError(
+                    "TorchCodec still cannot load using the isolated FFmpeg "
+                    f"shared runtime {shared}. Torch wheels={versions}. "
+                    "Check VC++ runtime and native DLL dependencies. "
+                    + (preflight.stderr or preflight.stdout)[-1000:]
+                )
+        else:
+            raise RuntimeError(
+                "Irodori-TTS .venv native dependency preflight failed; "
+                "no automatic PyTorch reinstall was attempted: "
+                + err[-1200:]
+            )
     if args.device == "cuda" and "cuda_available=True" not in preflight.stdout:
         raise RuntimeError("Irodori-TTS .venv cannot use CUDA")
     pilot = out / "nonverbal_pilot"
@@ -198,11 +213,18 @@ def smoke(args: argparse.Namespace, source: Path, out: Path, *,
     manifest = attempt / "train_manifest.jsonl"
     latents = attempt / "latents"
     args_list = command(python, upstream, dataset, manifest, latents, args.device)
+    if shared is not None:
+        # Add DLL search directory before importing torchcodec in the real
+        # upstream process. This changes only the child interpreter.
+        entry = Path(__file__).with_name("irodori_codec_entry.py").resolve()
+        args_list = [str(python), str(entry), str(shared),
+                     str(upstream / "prepare_manifest.py"), *args_list[2:]]
     if args.dry_run:
         result = {
             "status": "PREFLIGHT_ONLY", "samples": len(rows),
             "device": args.device, "proposed_output": str(attempt),
             "command": args_list, "lora_training": "NOT_RUN",
+            "ffmpeg_shared_bin": str(shared) if shared else "existing_environment",
         }
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return result
@@ -218,6 +240,7 @@ def smoke(args: argparse.Namespace, source: Path, out: Path, *,
             "source_rows": len(rows), **verified,
             "manifest": str(manifest), "latent_dir": str(latents),
             "lora_training": "NOT_RUN", "training_ready": False,
+            "ffmpeg_shared_bin": str(shared) if shared else "existing_environment",
             "next_gate": "controlled LoRA pilot and inference comparison",
         }
     except Exception as exc:
@@ -244,6 +267,7 @@ def main() -> int:
     parser.add_argument("--workspace")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda")
+    parser.add_argument("--ffmpeg-shared-bin", help="Existing FFmpeg 7 full-shared bin directory; skips portable bootstrap")
     args = parser.parse_args()
     try:
         source, out = paths(args)
