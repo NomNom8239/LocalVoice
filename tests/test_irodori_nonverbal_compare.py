@@ -35,11 +35,21 @@ class PairedInferenceTests(unittest.TestCase):
         ds.scan(self.args, self.source, self.out)
         inventory = ds.read_csv(self.out / "inventory.csv")
         speech = [r for r in inventory if Path(r["source_path"]).stem == "06"][0]
-        for r in inventory:
-            if r["clip_id"] == speech["clip_id"]:
-                r["source_kind"] = "my_voice"
-        fields = tuple(inventory[0].keys())
-        ds.write_csv(self.out / "inventory.csv", fields, inventory)
+        # Regression: scan inventory may have no source_kind because the
+        # WAV filename marker (not manifest.tsv) is what build() later used
+        # to resolve curated origin. Use the derived auto-prep report.
+        self.assertEqual(speech["source_kind"], "")
+        ds.write_csv(
+            self.out / "auto_preparation_report.csv",
+            ("clip_id", "source_path", "sha256", "source_kind", "route",
+             "reason", "candidate_style", "text", "text_source"),
+            [{"clip_id": speech["clip_id"], "source_path": speech["source_path"],
+              "sha256": speech["sha256"], "source_kind": "my_voice",
+              "route": "training_candidate", "reason": "curated_source_with_asr",
+              "candidate_style": "normal",
+              "text": "こんにちは。今日はいい天気ですね。",
+              "text_source": "asr_unverified"}],
+        )
         ds.write_csv(
             self.out / "dataset_for_prepare_manifest_auto.csv",
             ("audio", "text", "caption", "speaker"),
@@ -161,6 +171,41 @@ class PairedInferenceTests(unittest.TestCase):
                 runner=self.fake_runner
             )
         self.assertEqual(len(self.runs), 0)
+
+    def test_reference_uses_resolved_provenance_not_empty_inventory_column(self):
+        reference, digest, reason = compare.choose_speech_reference(
+            self.source, self.out, set()
+        )
+        self.assertEqual(reference, (self.source / "06.wav").resolve())
+        self.assertEqual(digest, ds.digest(reference))
+        self.assertEqual(reason, "curated_source_with_asr")
+
+    def test_reference_rejects_uncurated_ast_suggestions(self):
+        provenance = self.out / "auto_preparation_report.csv"
+        columns = ("clip_id", "source_path", "sha256", "source_kind", "route",
+                   "reason", "candidate_style", "text", "text_source")
+        rows = ds.read_csv(provenance)
+        rows[0]["reason"] = "strong_non_normal_event_candidate"
+        rows[0]["candidate_style"] = "groan"
+        ds.write_csv(provenance, columns, rows)
+        with self.assertRaisesRegex(ValueError, "not_normal_curated_speech"):
+            compare.choose_speech_reference(self.source, self.out, set())
+
+    def test_reference_exclusion_cannot_choose_pilot_audio(self):
+        with self.assertRaisesRegex(ValueError, "Selection audit"):
+            compare.choose_speech_reference(
+                self.source, self.out, {str(self.source / "06.wav")}
+            )
+
+    def test_reference_rejects_stale_provenance_sha(self):
+        provenance = self.out / "auto_preparation_report.csv"
+        columns = ("clip_id", "source_path", "sha256", "source_kind", "route",
+                   "reason", "candidate_style", "text", "text_source")
+        rows = ds.read_csv(provenance)
+        rows[0]["sha256"] = "0" * 64
+        ds.write_csv(provenance, columns, rows)
+        with self.assertRaisesRegex(ValueError, "missing_or_mismatched_provenance"):
+            compare.choose_speech_reference(self.source, self.out, set())
 
     def test_missing_speech_reference_is_not_replaced_by_holdout(self):
         target = self.out / "dataset_for_prepare_manifest_auto.csv"
