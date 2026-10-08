@@ -13,7 +13,7 @@ param(
     [string]$Candidate,
     [ValidateSet("emotion", "other", "all")]
     [string]$Kind = "emotion",
-    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript")]
+    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript", "needs_caption")]
     [string]$Group,
     [switch]$NoPlay,
     [switch]$IncludeTagged,
