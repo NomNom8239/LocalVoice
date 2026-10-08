@@ -57,6 +57,10 @@ in the separate experimental dataset; unknown / weak evidence goes to
 `deferred_unresolved_audio`, **not** the user's manual queue. Only
 conflicting nonverbal sound evidence goes to
 `ambiguous_vocal_review.csv` for optional targeted listening.
+Previously entered tentative human tags (`tagged`) that disagree with AST
+are preserved and routed to `deferred_unresolved_audio`, not back into
+human listening or directly into training. This keeps model disagreement
+from creating repeat manual work.
 The JSON summary now contains `manual_style_review_cases` and
 `reason_counts`, so an unexpectedly large human queue is visible.
 Rejected/invalid recordings stay excluded; stale source hashes stop
