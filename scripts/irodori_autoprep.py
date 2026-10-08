@@ -201,3 +201,74 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report
 
+def resolve(args: argparse.Namespace, source: Path, out: Path) -> None:
+    """Ask for ONE style choice per ambiguous clip, not text or captions."""
+    path = out / "ambiguous_vocal_review.csv"
+    if not path.is_file():
+        raise FileNotFoundError("Run 'prepare' to build the vocal-style queue")
+    if args.limit < 1:
+        raise ValueError("--limit must be at least 1")
+    if not args.no_play and shutil.which("ffplay") is None:
+        raise RuntimeError("ffplay is missing from PATH")
+    reviews = read_csv(out / "review.csv")
+    by_id = index(reviews, "review")
+    columns = tuple(dict.fromkeys(
+        [*read_csv_columns(out / "review.csv"),
+         *[key for item in reviews for key in item]]
+    ))
+    pending = read_csv(path)[:]
+    saved = 0
+    shown = 0
+    for queued in pending:
+        item = by_id.get(queued.get("clip_id", ""))
+        if not item or item.get("source_path") != queued.get("source_path"):
+            raise ValueError("Stale vocal queue; run prepare again")
+        if item.get("decision") in {"approved", "rejected", "style_confirmed"}:
+            continue
+        wav = Path(item["source_path"]).resolve()
+        if source not in wav.parents or not wav.is_file() or digest(wav) != item["sha256"]:
+            raise ValueError(f"Source WAV changed: {wav}")
+        if shown >= args.limit:
+            break
+        shown += 1
+        print(f"\n[{shown}] {wav.name} | AI: {queued.get('candidate_style')} | {queued.get('reason')}")
+        while True:
+            if not args.no_play:
+                subprocess.run(["ffplay", "-nodisp", "-autoexit",
+                                "-loglevel", "error", str(wav)], check=False)
+            answer = input(
+                "Style [normal/whisper/laugh/breath/panting/groan/emotion/other], "
+                "[=] AI suggestion, [r] replay, [s] skip, [x] reject, [q] quit > "
+            ).strip().lower()
+            if answer == "q":
+                print(f"Saved {saved} vocal-style classifications.")
+                return
+            if answer == "s":
+                break
+            if answer == "r":
+                continue
+            if answer == "x":
+                item["decision"] = "rejected"
+                item["notes"] = "rejected_during_vocal_style_classification"
+            else:
+                if answer == "=":
+                    answer = queued.get("candidate_style", "")
+                answer = normalize_style(answer)
+                if answer not in CAPTIONS:
+                    print("Unrecognized style; use s to defer.")
+                    continue
+                item["style"] = answer
+                item["decision"] = "style_confirmed"
+                # Do not mark text, speaker identity or audio quality verified.
+            write_csv(out / "review.csv", columns, reviews)
+            saved += 1
+            print(f"Saved style: {item['decision']} / {item.get('style', '')}")
+            break
+    print(f"Saved {saved} vocal-style classifications. Run prepare again.")
+
+
+def read_csv_columns(path: Path) -> list[str]:
+    import csv
+    with path.open("r", encoding="utf-8-sig", newline="") as stream:
+        return list(csv.DictReader(stream).fieldnames or [])
+
