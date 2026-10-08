@@ -161,8 +161,10 @@ def verified_wave_quality(
     All sources are SHA-checked and must decode to finite, valid audio.
     New/unreviewed candidates still pass strict acoustic quality limits.
     Previously approved clips have already passed official LV-03 DACVAE
-    and keep their historical acceptance, rather than retroactively failing
-    on a new silence/loudness heuristic.
+    and keep their historical acceptance. No NEW duration, silence,
+    loudness, clipping or DC threshold applies to them; source SHA,
+    valid audio decoding, nonempty samples, sample rate and finite values
+    are still mandatory.
     """
     import numpy as np
     import soundfile as sf
@@ -184,12 +186,13 @@ def verified_wave_quality(
             clipping = float(np.mean(np.abs(signal) >= 0.999))
             dc_offset = float(abs(mono.mean()))
             silent = float(np.mean(np.abs(mono) < 0.002))
-            if not (1.5 <= duration <= 25 and rms > 0):
-                reasons["invalid_duration_or_silent"] += 1
-                continue
-            if (strict_acoustic_gate and not (
-                    0.003 <= rms <= 0.40 and clipping <= 0.005
-                    and dc_offset <= 0.05 and silent < 0.90)):
+            # Previously approved audio already passed the official codec.
+            # Do NOT retroactively veto short or quiet approved clips:
+            # the limits below are only for NEW auto-suggested training WAVs.
+            if strict_acoustic_gate and not (
+                    1.5 <= duration <= 25 and rms > 0
+                    and 0.003 <= rms <= 0.40 and clipping <= 0.005
+                    and dc_offset <= 0.05 and silent < 0.90):
                 reasons["acoustic_quality_gate"] += 1
                 continue
         except (OSError, ValueError, RuntimeError):
@@ -439,7 +442,7 @@ def run(args: argparse.Namespace) -> int:
     speech = evenly_sample(screened, args.max_speech)
     # The 8 original human-approved WAVs already passed official LV-03
     # DACVAE. Preserve that decision, while still rejecting tampered,
-    # unreadable, invalid-duration, or completely silent audio.
+    # unreadable or structurally invalid audio (no invented thresholds).
     approved, bad_approved = verified_wave_quality(
         preserved, state["inventory"], strict_acoustic_gate=False)
     if len(approved) != len(preserved):
@@ -451,7 +454,7 @@ def run(args: argparse.Namespace) -> int:
     expressive = nonverbal_rows(state, source.resolve(), ws)
     # Breath/groan recordings may be quiet by definition. They have already
     # passed the separate SHA/tokenizer-checked experimental pilot; retain
-    # them unless unreadable, fully silent, changed, or invalid-duration.
+    # them unless unreadable, structurally invalid or changed.
     expressive, bad_exp = verified_wave_quality(
         expressive, state["inventory"], strict_acoustic_gate=False)
     expressive = [r for r in expressive if r["clip_id"] not in {x["clip_id"] for x in normal}]
@@ -483,7 +486,7 @@ def run(args: argparse.Namespace) -> int:
         "source": str(source),
         "input_inventory": len(state["inventory"]),
         "old_approved_train_retained": len(approved),
-        "frozen_approved_qc_policy": "integrity_and_decodability_only; LV03 approval retained",
+        "frozen_approved_qc_policy": "SHA/valid decoded audio only; original LV03 approval retained",
         "external_eval_retained": len(state["eval_ids"]),
         "unique_speech": len(normal),
         "unique_nonverbal": len(expressive),
