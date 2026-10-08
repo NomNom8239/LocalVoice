@@ -338,6 +338,20 @@ format, completion count and exact paths. Existing data and checkpoints
 are not modified. Windows inference reuses the same project-local
 FFmpeg 7 shared DLLs used by DACVAE, when required.
 
+**Resolved-provenance reference fix:** `scan()` populates inventory
+`source_kind` only from `manifest.tsv`, while `prepare` can also
+resolve original collection provenance from WAV filename markers and
+writes it to `auto_preparation_report.csv`. Reference selection now
+joins `dataset_for_prepare_manifest_auto.csv`, the authoritative
+auto-preparation report, and the SHA-256-verified inventory using
+`clip_id` and paths; it selects only `normal` speech with a
+`curated_source_with_asr` reason and `my_voice` or `review_approved`
+provenance. It is safe when inventory `source_kind` is blank and
+does not fall back to a held-out nonverbal WAV or force manual review.
+Failure reports an automatic selection-audit count for diagnosis.
+Output WAV validation also supports TorchAudio's IEEE float WAV by
+using the existing ffprobe-backed metadata reader.
+
 The script validates **successful audio generation only**: it does not
 claim a useful LoRA, target-speaker quality, intelligible speech,
 or nonverbal correctness. The test set is only 1 held-out sound per
