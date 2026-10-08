@@ -296,7 +296,7 @@ class DatasetTests(unittest.TestCase):
             w.setnchannels(1)
             w.setsampwidth(2)
             w.setframerate(16000)
-            w.writeframes(b"\\x00\\x00" * 8000)
+            w.writeframes(b"\x00\x00" * 8000)
         mod.scan(self.args, self.source, self.out)
         row = mod.read_csv(self.out / "inventory.csv")[0]
         self.assertEqual(row["scan_flag"], "short")
