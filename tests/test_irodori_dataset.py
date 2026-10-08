@@ -215,6 +215,49 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(queue[0]["review_group"], "tagged_nonverbal")
         self.assertEqual(mod.read_csv(self.out / "review.csv")[0]["decision"], "tagged")
 
+    def test_laugh_style_accepts_common_names(self):
+        for label in ("laugh", "laughter", "laughing", "笑い声", "笑い"):
+            self.assertEqual(mod.normalize_style(label), "laugh")
+        self.assertIn("laugh", mod.VALID_STYLES)
+        self.assertIn("laugh", mod.SPECIAL_STYLES)
+
+    def test_laugh_only_tag_is_saved_but_not_approved(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False
+        )
+        with patch("builtins.input", side_effect=["t", "laugh", "laugh only"]):
+            mod.review(args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["style"], "laugh")
+        self.assertEqual(row["decision"], "tagged")
+        self.assertEqual(row["notes"], "laugh only")
+        self.assertEqual(mod.digest(self.wav), self.original)
+        with self.assertRaises(ValueError):
+            mod.export(self.args, self.source, self.out)
+
+    def test_laughing_with_verified_speech_can_be_approved(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False
+        )
+        with patch("builtins.input", side_effect=[
+            "a", "笑い声", "こんにちは", "笑いながら話す", "y"
+        ]):
+            mod.review(args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["style"], "laugh")
+        self.assertEqual(row["decision"], "approved")
+        mod.export(self.args, self.source, self.out)
+        self.assertEqual(
+            mod.read_csv(self.out / "dataset_for_prepare_manifest.csv")[0]["caption"],
+            "笑いながら話す",
+        )
+
     def test_interactive_review_fails_if_audio_changed(self):
         mod.scan(self.args, self.source, self.out)
         mod.triage(self.args, self.source, self.out)
