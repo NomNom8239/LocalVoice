@@ -316,8 +316,12 @@ def triage(args, source: Path, out: Path) -> None:
                "asr_suggestion", "decision"),
               output)
     print(f"Created read-only review queue: {target}")
-    print(json.dumps({"pending": len(output), "groups": dict(counts)},
-                     ensure_ascii=False, indent=2))
+    print(json.dumps({
+        "pending": sum(r["decision"] == "pending" for r in output),
+        "tagged_for_later": sum(r["decision"] == "tagged" for r in output),
+        "queue_total": len(output),
+        "groups": dict(counts)
+    }, ensure_ascii=False, indent=2))
     print("Edit only review.csv to approve/reject; triage.csv is regenerated.")
 
 
