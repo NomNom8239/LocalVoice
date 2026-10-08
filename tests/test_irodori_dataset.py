@@ -171,7 +171,7 @@ class DatasetTests(unittest.TestCase):
         mod.scan(self.args, self.source, self.out)
         mod.triage(self.args, self.source, self.out)
         args = argparse.Namespace(
-            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+            kind="all", group=None, limit=1, no_play=True, player="ffplay", include_tagged=False
         )
         with patch("builtins.input", side_effect=[
             "a", "normal", "こんにちは", "", "y"
@@ -187,19 +187,33 @@ class DatasetTests(unittest.TestCase):
         mod.scan(self.args, self.source, self.out)
         mod.triage(self.args, self.source, self.out)
         args = argparse.Namespace(
-            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+            kind="all", group=None, limit=1, no_play=True, player="ffplay", include_tagged=False
         )
         with patch("builtins.input", side_effect=[
             "t", "breath", "Possible breath, confirm later"
         ]):
             mod.review(args, self.source, self.out)
         row = mod.read_csv(self.out / "review.csv")[0]
-        self.assertEqual(row["decision"], "pending")
+        self.assertEqual(row["decision"], "tagged")
         self.assertEqual(row["style"], "breath")
         self.assertEqual(row["text"], "")
         self.assertEqual(mod.digest(self.wav), self.original)
         with self.assertRaises(ValueError):
             mod.export(self.args, self.source, self.out)
+
+    def test_tagged_item_is_not_represented_as_pending_approval(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False
+        )
+        with patch("builtins.input", side_effect=["t", "groan", "Needs review"]):
+            mod.review(args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        queue = mod.read_csv(self.out / "triage.csv")
+        self.assertEqual(queue[0]["review_group"], "tagged_nonverbal")
+        self.assertEqual(mod.read_csv(self.out / "review.csv")[0]["decision"], "tagged")
 
     def test_interactive_review_fails_if_audio_changed(self):
         mod.scan(self.args, self.source, self.out)
@@ -207,7 +221,7 @@ class DatasetTests(unittest.TestCase):
         with self.wav.open("ab") as stream:
             stream.write(b"changed")
         args = argparse.Namespace(
-            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+            kind="all", group=None, limit=1, no_play=True, player="ffplay", include_tagged=False
         )
         with self.assertRaisesRegex(ValueError, "WAV missing/changed"):
             mod.review(args, self.source, self.out)
