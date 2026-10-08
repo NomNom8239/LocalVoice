@@ -57,8 +57,8 @@ $python = Join-Path $root ".venv\Scripts\python.exe"
 if ($Action -eq "auto") {
     $batch = if ($PSBoundParameters.ContainsKey("Limit")) { $Limit } else { 2000 }
     if ($batch -lt 1) { throw "-Limit must be >= 1" }
-    $shared = @("-Speaker", $Speaker)
-    if ($Workspace) { $shared += @("-Workspace", $Workspace) }
+    $shared = @{ Speaker = $Speaker }
+    if ($Workspace) { $shared.Workspace = $Workspace }
     & $PSCommandPath asr @shared -IncludeShort -Limit $batch
     & $PSCommandPath triage @shared
     & $PSCommandPath classify @shared -Limit $batch -Device $Device
