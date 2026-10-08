@@ -38,6 +38,68 @@ These groups are *inspection hints*, not automatic confirmations of
 breathing, groaning, whispering or the correct speaker. Listen and edit
 `review.csv` (not `triage.csv`) to approve/reject clips.
 
+### Experimental automatic style suggestions (human review required)
+
+This is a **pilot**, not an automatic acceptance/classification gate. LocalVoice
+runs a pretrained AudioSet Audio Spectrogram Transformer (AST), which has
+explicit sound-event labels for speech, laughter, breathing, gasping, panting,
+groaning, and whispering. The mapping is to the existing LocalVoice styles:
+\`normal\`, \`laugh\`, \`breath\`, \`panting\`, \`groan\`, and \`whisper\`.
+Labels such as "Speech" do **not** prove a transcript is correct, that the
+voice is the intended speaker, or that the delivery is normal. Scores are
+raw **multi-label sigmoid activations**, not calibrated probabilities of
+correctness. Short/subsecond clips and out-of-domain Japanese voices are
+particularly uncertain. Strong background events or weak/contradictory
+evidence lead to \`unknown\` or a review-priority flag.
+
+The baseline uses
+[MIT/ast-finetuned-audioset-10-10-0.4593](https://huggingface.co/MIT/ast-finetuned-audioset-10-10-0.4593)
+at a pinned model revision. The first invocation downloads approximately
+346 MB of model weights to the Hugging Face cache. Requires the root
+LocalVoice \`.venv\` CUDA-enabled torch (already installed in the current
+LocalVoice workflow), \`numpy\`, \`ffmpeg\`, and optional \`transformers\`.
+Install only the missing classifier dependency into that existing environment:
+
+\`\`\`powershell
+uv pip install --python .\.venv\Scripts\python.exe "transformers>=4.53,<5"
+\`\`\`
+
+Start with a **20-clip pilot**, not 1,167 unverified predictions:
+
+\`\`\`powershell
+.\scripts\irodori.ps1 triage -Speaker Ui_Shigure
+.\scripts\irodori.ps1 classify -Speaker Ui_Shigure -Group no_detected_text -Limit 20
+.\scripts\irodori.ps1 status -Speaker Ui_Shigure
+\`\`\`
+
+The \`classify\` action creates/checkpoints only
+\`style_suggestions.csv\` in the existing workspace; **never modifies**
+\`review.csv\`, \`asr_suggestions.csv\`, original WAVs, approved decisions,
+or any training manifest. Cached predictions are resumed, and stale hashes
+or changed model revisions fail closed. \`-RetryErrors\` retries failed
+predictions only. You can narrow by \`-Group short_audio\` or another triage
+group. Audio is decoded to mono 16 kHz via \`ffmpeg\`; the first 10 seconds
+are analyzed, with a truncation warning on longer clips.
+
+To confirm or correct *suggestions* by listening:
+
+\`\`\`powershell
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind all -Candidate laugh -Limit 20
+\`\`\`
+
+The reviewer displays the model candidate, raw score, uncertainty reasons,
+and top AudioSet events. Use \`=\` at the \`Style:\` prompt only when
+**you have actually listened and agree** with the suggestion; otherwise
+type your corrected style. The existing \`a\` / \`t\` / \`n\` human actions
+remain authoritative and transcription requirements are unchanged. Machine
+suggestions cannot create \`approved\` or \`tagged\` judgments by themselves.
+
+Do not treat this as a validated classifier until manual evaluation has been
+performed across all target styles, including negative/background-only
+examples. Because AST is trained on 10-second AudioSet clips, performance on
+very short isolated nonverbal voice clips may be poor. Analyze pilot outputs
+before processing the remainder.
+
 ### Interactive LoRA review
 
 Use the existing `review_emotion` provenance first. These were already
@@ -115,7 +177,13 @@ ASR writes suggestions, never verified text or approval. A successful ASR run au
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_irodori_dataset.py"
 ```
 
-Tests cover non-destructive scanning, explicit approval, immutable source check, manual ASR promotion, and workspace reuse. Windows runtime acceptance is still required.
+Tests cover non-destructive scanning, explicit approval, immutable source check, manual ASR promotion, and workspace reuse.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_irodori_style.py"
+```
+
+The style unit tests use a mock classifier, require no model download, and check no modification of human judgments. Windows runtime acceptance is still required.
 
 ### Role boundaries
 
