@@ -34,9 +34,10 @@ def group_holdout(rows: list[dict]) -> tuple[list[dict], list[dict]]:
             raise ValueError("Incomplete latent manifest conditioning")
         groups[text].append(row)
     if len(groups) != 2 or any(len(v) != 3 for v in groups.values()):
+        counts = {repr(k): len(v) for k, v in groups.items()}
         raise ValueError(
             "Feasibility pilot requires exactly two cues with three clips each; "
-            "do not silently mix styles or change the experiment."
+            f"observed={counts}. Do not silently mix styles or change the experiment."
         )
     train, holdout = [], []
     for cue in sorted(groups):
