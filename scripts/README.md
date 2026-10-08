@@ -37,6 +37,7 @@ their imports, PowerShell entrypoints and tests.
 | Audio/ASR comparison | irodori_nonverbal_evaluate.py |
 | Separate speech-retention ASR | irodori_speech_retention_asr.py |
 | **LV-02 dataset expansion and review evidence gate** | **lv02_expand_approved.py** |
+| **LV-02 speaker similarity prioritization (never auto-approve)** | **lv02_speaker_rank.py** |
 | **LV-03 DACVAE recovery without Codex** | **lv03_no_codex.py** |
 | **LV-04 official LoRA baseline without Codex** | **lv04_no_codex.py** |
 | **LV-05 voice A/B, reference-condition diagnosis** | **lv05_voice_ab.py** |
@@ -250,3 +251,45 @@ audit and should not be run just to generate more model artifacts:
 The LV-04 invocation above is a read-only preflight; --run is a
 separate deliberate training action. Original LV-03 _005 and LV-04
 _001 are preserved as reproducible **technical** baselines.
+
+
+### LV-02 after actual audit 001: source-video holdout and speaker ranking
+
+Audit 001 resulted in 543 REVIEW_REQUIRED, 531 HOLDOUT_VIDEO_EXCLUDED,
+82 OTHER_OR_HOLD, 8 EXISTING_TRAIN and 3 EXISTING_EVALUATION. The 531
+holdout-video items are NOT failed-quality files; they share the source
+video of the three evaluation examples. Do not silently move them into
+training or abandon the source-video isolation gate.
+
+The 543 REVIEW_REQUIRED are candidates, **not approved clips**.
+Rather than manually confirming all 48 first-wave candidates up front,
+rank the wave with the existing profile speaker reference bank (only
+if the pre-existing Ui_Shigure bank and embedding model are installed):
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv02_speaker_rank.py
+~~~
+
+The program uses the most recent completed LV-02 audit, including
+lv02_expansion_001, and finds original source WAVs via the validated
+inventory, even if the older audit queue lacks source_path. It checks
+SHA256 and protected evaluation video isolation. It does not change
+review decisions or WAVs. It writes a *new* lv02_expansion_NNN folder
+with speaker_ranked_review_queue.csv and speaker_rank_result.json.
+
+IMPORTANT: This score is a heuristic to prioritize which candidates
+to listen to, NOT a speaker-identity verdict or automatic training
+approval. The bank must be the correct profile and model; filename
+and source_kind alone do not prove identity. A missing bank/model fails
+closed without a download or new model installation. If the bank has
+calibrated negative examples, saved thresholds may label the higher
+priorities; without them the output remains UNCALIBRATED_SIMILARITY_REVIEW.
+Review only promising and uncertain clips first; manually verify actual
+speaker, audio quality, text, and expressive caption before promoting.
+The original first-wave 48 need not all be manually transcribed.
+
+The new audit command now includes the source WAV path, duration and
+scan flag in review_queue.csv, so future queues are directly listenable.
+The old audit 001 remains immutable. The score command can resolve
+the old queue's paths using inventory.csv without asking to rerun audit.
