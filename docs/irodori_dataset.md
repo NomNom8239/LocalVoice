@@ -126,6 +126,16 @@ characters. With the already generated six hypotheses:
 .\scripts\irodori.ps1 nonverbal-check -Speaker Ui_Shigure
 ~~~
 
+The v4-Small tokenizer uses SentencePiece. The PowerShell runner checks
+`LocalVoice/.venv` for the `sentencepiece` package and installs it
+automatically via `uv` only if it is missing, before loading the tokenizer.
+This fixes the Hugging Face error "Cannot instantiate this tokenizer from a
+slow version. If it's based on sentencepiece, make sure you have
+sentencepiece installed." The downloaded tokenizer files and pilot CSVs
+are reused; neither the original WAVs nor review decisions are touched.
+When starting the Python checker directly, an actionable dependency error
+is produced instead of a vague conversion failure.
+
 The script reads the original nonverbal candidate audit and inventory,
 verifies original WAV SHA-256 values and the chosen subset, loads **only**
 the pinned HF tokenizer (not the model weights), checks unknown tokens,
