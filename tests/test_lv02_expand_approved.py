@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import lv02_expand_approved as exp
+import lv02_speaker_rank as speaker_rank
 
 
 def write(path: Path, keys: list[str], rows: list[dict]) -> None:
@@ -123,6 +124,37 @@ class LV02ExpansionTest(unittest.TestCase):
         )
         self.assertEqual((self.ws / "lv02_approved_evaluation.csv").read_bytes(), eval_bytes)
         self.assertEqual(json.loads((result / "selection.json").read_text())["new_approved"], 1)
+
+    def test_speaker_rank_queue_checks_protected_ids_and_hash(self) -> None:
+        folder, queue = self.audit_queue()
+        state = exp.load_authority(self.ws)
+        checked = speaker_rank.validate_queue(state, queue)
+        self.assertEqual(len(checked), 4)
+        self.assertTrue(all(Path(row["source_path"]).is_file() for row in checked))
+        tampered = [dict(row) for row in queue]
+        tampered[0]["sha256"] = "stale"
+        with self.assertRaisesRegex(ValueError, "SHA mismatch"):
+            speaker_rank.validate_queue(state, tampered)
+        holdout = [dict(queue[0])]
+        holdout[0]["clip_id"] = "clip0008"
+        with self.assertRaisesRegex(ValueError, "Not a permitted"):
+            speaker_rank.validate_queue(state, holdout)
+
+    def test_speaker_rank_balance_and_no_auto_approval(self) -> None:
+        examples = [
+            {"source_video": "stream_a", "clip_id": "1",
+             "speaker_score": "0.90",
+             "speaker_priority": "HIGH_SIMILARITY_REVIEW_FIRST"},
+            {"source_video": "stream_a", "clip_id": "2",
+             "speaker_score": "0.88",
+             "speaker_priority": "HIGH_SIMILARITY_REVIEW_FIRST"},
+            {"source_video": "stream_b", "clip_id": "3",
+             "speaker_score": "0.75",
+             "speaker_priority": "UNCERTAIN_SIMILARITY_REVIEW"},
+        ]
+        ranked = speaker_rank.balanced_sort(examples)
+        self.assertEqual([x["clip_id"] for x in ranked], ["1", "3", "2"])
+        self.assertTrue(all(x.get("action", "") == "" for x in ranked))
 
     def test_auto_asr_without_confirmation_rejected(self) -> None:
         folder, queue = self.audit_queue()
