@@ -119,6 +119,49 @@ class DirectLoraTests(unittest.TestCase):
         self.assertEqual(tampered, [])
         self.assertEqual(rejection["missing_or_sha_changed"], 1)
 
+    def test_prior_dacvae_approved_very_short_quiet_wav_retained(self):
+        # Regression for real failure: prior official LV03 accepted 8 clips,
+        # of which 5 later failed invented 1.5-second/RMS constraints.
+        wav = self.root / "short__approved.wav"
+        rate = 16000
+        with wave.open(str(wav), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(rate)
+            samples = (
+                int(32767 * 0.0001 * math.sin(2 * math.pi * 220 * n / rate))
+                for n in range(rate // 2)
+            )
+            output.writeframes(
+                b"".join(struct.pack("<h", sample) for sample in samples))
+        original_sha = direct.sha256(wav)
+        row = {"audio": str(wav), "clip_id": "frozen",
+               "sha256": original_sha}
+        inventory = {"frozen": {"sha256": original_sha}}
+        strict, reasons = direct.verified_wave_quality([row], inventory)
+        self.assertEqual(strict, [])
+        self.assertEqual(reasons["acoustic_quality_gate"], 1)
+        frozen, reasons = direct.verified_wave_quality(
+            [row], inventory, strict_acoustic_gate=False)
+        self.assertEqual(frozen, [row])
+        self.assertFalse(reasons)
+
+    def test_frozen_approved_corrupted_or_empty_audio_still_rejected(self):
+        wav = self.root / "empty__approved.wav"
+        with wave.open(str(wav), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(16000)
+            output.writeframes(b"")
+        actual_sha = direct.sha256(wav)
+        row = {"audio": str(wav), "clip_id": "frozen",
+               "sha256": actual_sha}
+        valid, reasons = direct.verified_wave_quality(
+            [row], {"frozen": {"sha256": actual_sha}},
+            strict_acoustic_gate=False)
+        self.assertEqual(valid, [])
+        self.assertEqual(reasons["bad_wave"], 1)
+
     def test_existing_tokenizer_checked_nonverbal_pilot_is_experimental(self):
         import irodori_nonverbal_manifest
 
