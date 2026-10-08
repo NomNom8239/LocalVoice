@@ -372,6 +372,64 @@ class DatasetTests(unittest.TestCase):
         )
         mod.export(self.args, self.source, self.out)
 
+    def test_special_delivery_saves_verified_text_without_caption(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        review_args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False,
+        )
+        with patch("builtins.input", side_effect=[
+            "a", "emotion", "なんでGOODなんですかぁ！？", "", "y"
+        ]):
+            mod.review(review_args, self.source, self.out)
+
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["decision"], "needs_caption")
+        self.assertEqual(row["style"], "emotion")
+        self.assertEqual(row["text"], "なんでGOODなんですかぁ！？")
+        self.assertEqual(row["caption"], "")
+        self.assertEqual(row["speaker_ok"], "yes")
+        self.assertEqual(row["quality"], "good")
+        self.assertEqual(mod.digest(self.wav), self.original)
+        with self.assertRaises(ValueError):
+            mod.export(self.args, self.source, self.out)
+
+        mod.triage(self.args, self.source, self.out)
+        queue = mod.read_csv(self.out / "triage.csv")
+        self.assertEqual(queue[0]["review_group"], "needs_caption")
+
+        # No need to retype the already verified transcript: Enter keeps it.
+        review_args.group = "needs_caption"
+        with patch("builtins.input", side_effect=[
+            "a", "emotion", "", "興奮して大声で叫ぶように話している", "y"
+        ]):
+            mod.review(review_args, self.source, self.out)
+
+        after = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(after["decision"], "approved")
+        self.assertEqual(after["text"], "なんでGOODなんですかぁ！？")
+        self.assertEqual(after["caption"], "興奮して大声で叫ぶように話している")
+        mod.export(self.args, self.source, self.out)
+        training = mod.read_csv(self.out / "dataset_for_prepare_manifest.csv")
+        self.assertEqual(training[0]["text"], "なんでGOODなんですかぁ！？")
+        self.assertEqual(training[0]["caption"], after["caption"])
+        self.assertEqual(mod.digest(self.wav), self.original)
+
+    def test_failed_quality_confirmation_never_saves_partial_text(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        review_args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True,
+            player="ffplay", include_tagged=False,
+        )
+        original = (self.out / "review.csv").read_bytes()
+        with patch("builtins.input", side_effect=[
+            "a", "emotion", "テスト", "", "n", "q"
+        ]):
+            mod.review(review_args, self.source, self.out)
+        self.assertEqual((self.out / "review.csv").read_bytes(), original)
+
     def test_short_wavs_are_not_asr_transcribed_without_opt_in(self):
         with wave.open(str(self.wav), "wb") as w:
             w.setnchannels(1)
