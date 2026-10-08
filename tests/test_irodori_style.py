@@ -166,8 +166,9 @@ class StyleBaselineTests(unittest.TestCase):
 
         rows = data.read_csv(review_path)
         rows[0].update({
-            "style": "groan", "decision": "needs_text",
+            "style": "groan", "decision": "needs_caption",
             "speaker_ok": "yes", "quality": "good",
+            "text": "声を張り上げる", "caption": "",
         })
         data.write_csv(review_path, data.COLUMNS, rows)
         reviewed_bytes = review_path.read_bytes()
