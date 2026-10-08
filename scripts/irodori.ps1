@@ -49,7 +49,7 @@ if ($Action -eq "asr") {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
             throw "uv is needed to bootstrap the isolated ASR environment."
         }
-        Invoke-NativeChecked "uv" @("venv", $envDir, "--python", "3.12") "ASR environment creation failed"
+        Invoke-NativeChecked -Executable "uv" -Arguments @("venv", $envDir, "--python", "3.12") -FailureMessage "ASR environment creation failed"
     }
     # Missing faster-whisper is expected in a newly created environment.
     # find_spec checks availability without importing and writing traceback.
@@ -60,7 +60,7 @@ if ($Action -eq "asr") {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
             throw "uv is needed to install faster-whisper."
         }
-        Invoke-NativeChecked "uv" @("pip", "install", "--python", $python, "faster-whisper") "ASR dependency install failed"
+        Invoke-NativeChecked -Executable "uv" -Arguments @("pip", "install", "--python", $python, "faster-whisper") -FailureMessage "ASR dependency install failed"
     }
     elseif ($packageState -ne "installed") {
         throw "Unexpected ASR dependency probe result: $packageState"
@@ -80,4 +80,4 @@ if ($Action -eq "asr") {
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
-Invoke-NativeChecked $python $argsList "Irodori $Action failed"
+Invoke-NativeChecked -Executable $python -Arguments $argsList -FailureMessage "Irodori $Action failed"
