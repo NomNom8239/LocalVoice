@@ -270,7 +270,7 @@ EVAL_COLUMNS = (
 def evaluate_pilot(args: argparse.Namespace) -> None:
     """Join experimental predictions with manually reviewed labels.
 
-    Only explicit speaker/style confirmations (approved, needs_text) count
+    Only explicit speaker/style confirmations (approved, needs_text, needs_caption) count
     as ground truth. Tentative 'tagged' decisions do not count as confirmed.
     """
     _, out = paths(args)
@@ -300,7 +300,7 @@ def evaluate_pilot(args: argparse.Namespace) -> None:
             evaluation = "rejected_audio"
         elif decision == "tagged":
             evaluation = "tentative_match" if candidate == human_style else "tentative_mismatch"
-        elif decision in {"approved", "needs_text"}:
+        elif decision in {"approved", "needs_text", "needs_caption"}:
             if (row.get("speaker_ok", "").lower() != "yes" or
                     row.get("quality", "").lower() != "good"):
                 evaluation = "unconfirmed_quality"
