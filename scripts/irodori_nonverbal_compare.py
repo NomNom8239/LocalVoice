@@ -59,38 +59,82 @@ def validate_adapter(attempt: Path) -> tuple[Path, list[dict], list[dict], dict]
 
 
 def choose_speech_reference(source: Path, out: Path,
-                            excluded: set[str]) -> tuple[Path, str]:
-    """Select a curated, separate speech clip from the existing 1,041 candidates."""
+                            excluded: set[str]) -> tuple[Path, str, str]:
+    """Use authoritative auto-prep provenance; inventory alone is insufficient.
+
+    scan() records source_kind only from manifest.tsv. build() subsequently
+    resolves curated provenance via review_origin(), including WAV filename
+    markers. The auto-preparation report contains that resolved value, so
+    selecting on inventory.source_kind alone incorrectly rejects real clips.
+    """
     candidate_path = out / "dataset_for_prepare_manifest_auto.csv"
-    if not candidate_path.is_file():
-        raise FileNotFoundError("Existing curated speech-candidate manifest is missing")
-    eligible = {row["audio"] for row in read_csv(candidate_path)
-                if row.get("audio") and len(row.get("text", "").strip()) >= 8}
+    report_path = out / "auto_preparation_report.csv"
+    if not candidate_path.is_file() or not report_path.is_file():
+        raise FileNotFoundError(
+            "Existing curated speech candidates or auto-preparation provenance "
+            "is missing; run 'prepare' to recreate reports from existing results"
+        )
+    candidates = read_csv(candidate_path)
+    reports = read_csv(report_path)
     inventory = read_csv(out / "inventory.csv")
-    ranked = []
+    by_path = {r["audio"]: r for r in candidates if r.get("audio")}
+    by_id = {r["clip_id"]: r for r in reports if r.get("clip_id")}
+    if len(by_path) != len(candidates) or len(by_id) != len(reports):
+        raise ValueError("Duplicate or invalid speech candidate / provenance entries")
+    # Keep speech conditions distinct from the trial's six nonverbal clips.
+    # Do not promote human-unverified acoustic-event suggestions to the
+    # reference pool, nor treat unknown origin as proof of curated speech.
+    curated_origins = {"my_voice", "review_approved"}
+    curated_reasons = {"curated_source_with_asr"}
+    scored = []
+    inspected = Counter()
     for row in inventory:
-        src = row.get("source_path", "")
-        if (src not in eligible or src in excluded
-                or row.get("source_kind") not in
-                {"my_voice", "review_approved", "review_emotion"}):
+        path = row.get("source_path", "")
+        if path in excluded or path not in by_path:
+            continue
+        inspected["candidate_in_inventory"] += 1
+        detail = by_id.get(row["clip_id"])
+        if (detail is None or detail.get("source_path") != path
+                or detail.get("sha256") != row["sha256"]
+                or detail.get("route") != "training_candidate"):
+            inspected["missing_or_mismatched_provenance"] += 1
+            continue
+        if (detail.get("source_kind") not in curated_origins
+                or detail.get("reason") not in curated_reasons
+                or detail.get("candidate_style") != "normal"):
+            inspected["not_normal_curated_speech"] += 1
+            continue
+        if (not by_path[path].get("text", "").strip()
+                or by_path[path].get("speaker", "") == ""
+                or by_path[path]["text"].strip() != detail.get("text", "").strip()):
+            inspected["missing_or_changed_text"] += 1
             continue
         try:
             duration = float(row["duration_sec"])
             rate = int(row["sample_rate"])
         except (ValueError, KeyError, TypeError):
+            inspected["invalid_metadata"] += 1
             continue
-        if (not 3.0 <= duration <= 16.0 or rate < 16000
-                or row.get("scan_flag") != "ok"):
+        if rate < 16000 or row.get("scan_flag") != "ok" or not 1.5 <= duration <= 20:
+            inspected["invalid_audio_range"] += 1
             continue
-        ranked.append((abs(duration - 8), row["clip_id"], row))
-    for _, _, row in sorted(ranked, key=lambda x: x[:2]):
+        inspected["eligible_metadata"] += 1
+        # Strongly prefer the standard 3..16-second reference window, while
+        # permitting a shorter valid clip if that is all that exists.
+        penalty = 0 if 3 <= duration <= 16 else 1
+        scored.append((penalty, abs(duration - 8.0), row["clip_id"], row, detail))
+
+    # Hash verification is done on the source WAV, not inferred from the CSV.
+    for _, _, _, row, detail in sorted(scored, key=lambda x: x[:3]):
         ref = Path(row["source_path"]).resolve()
-        if (source in ref.parents and ref.is_file()
+        if (ref.is_file() and source in ref.parents
                 and digest(ref) == row["sha256"]):
-            return ref, row["sha256"]
+            return ref, row["sha256"], detail["reason"]
+        inspected["hash_or_path_mismatch"] += 1
     raise ValueError(
-        "No separately curated speech reference with a verified hash "
-        "was found; do not reuse held-out nonverbal audio as speaker reference."
+        "No SHA-verified, ordinary curated speech reference found in the "
+        "existing candidate/provenance tables; held-out nonverbal samples "
+        f"cannot substitute for one. Selection audit={dict(inspected)}"
     )
 
 
@@ -183,7 +227,7 @@ def compare(args: argparse.Namespace, source: Path, out: Path, *,
     checkpoint = Path(prior.get("checkpoint", "")).resolve()
     if not checkpoint.is_file():
         raise FileNotFoundError(f"Original Irodori base checkpoint missing: {checkpoint}")
-    reference, reference_sha = choose_speech_reference(
+    reference, reference_sha, reference_reason = choose_speech_reference(
         source, out, {r["audio"] for r in load_jsonl(
             out / "nonverbal_pilot/hf_audio_dataset_hypothesis.jsonl")}
     )
@@ -220,6 +264,7 @@ def compare(args: argparse.Namespace, source: Path, out: Path, *,
         "adapter": str(adapter), "base_checkpoint": str(checkpoint),
         "speech_reference": str(reference),
         "speech_reference_sha256": reference_sha,
+        "speech_reference_provenance_reason": reference_reason,
         "heldout_clips": 2, "paired_prompts": len(cases),
         "expected_wavs": len(jobs),
         "output_dir": str(target),
