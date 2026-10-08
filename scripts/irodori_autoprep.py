@@ -65,3 +65,28 @@ def sound_hint(hint: dict[str, str]) -> tuple[str, str]:
     return value, "style_prediction_candidate"
 
 
+def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object]:
+    """Non-interactive assembly; WAV and human judgments remain untouched."""
+    reviews = read_csv(out / "review.csv")
+    inv = index(read_csv(out / "inventory.csv"), "inventory")
+    if len(reviews) != len(inv) or {r.get("clip_id") for r in reviews} != set(inv):
+        raise ValueError("Inventory/review identity mismatch")
+    apath, spath = out / "asr_suggestions.csv", out / "style_suggestions.csv"
+    asr = index(read_csv(apath), "ASR") if apath.is_file() else {}
+    hints = index(read_csv(spath), "AST") if spath.is_file() else {}
+    details, ambiguous, experiments, ready = [], [], [], []
+    summary = Counter()
+    for row in reviews:
+        cid = row["clip_id"]
+        orig = inv[cid]
+        if any(orig.get(k) != row.get(k) for k in (
+            "sha256", "source_path", "relative_path", "duration_sec",
+        )):
+            raise ValueError(f"Inventory mismatch: {cid}")
+        wav = Path(row["source_path"]).resolve()
+        if source not in wav.parents or not wav.is_file() or digest(wav) != row["sha256"]:
+            raise ValueError(f"Source WAV missing or changed: {wav}")
+        ar, st = asr.get(cid, {}), hints.get(cid, {})
+        for name, item in (("ASR", ar), ("AST", st)):
+            if item and item.get("sha256") != row["sha256"]:
+                raise ValueError(f"Stale {name} result: {cid}")
