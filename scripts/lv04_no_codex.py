@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LV-04 Irodori LoRA baseline: offline preflight by default; --run trains.
+r"""LV-04 Irodori LoRA baseline: offline preflight by default; --run trains.
 
 From the LocalVoice repository root:
     .\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py
