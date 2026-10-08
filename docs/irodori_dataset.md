@@ -50,6 +50,11 @@ Controls: `a` = approve with verified text/style/caption and explicit
 speaker/quality confirmation; `t` = save only a tentative nonverbal style
 tag; `n` = reject; `r` = replay; `s` = skip; `q` = quit.
 
+
+For laughter, the dedicated style is `laugh`. Both `laugh` and `laughter`
+(and the Japanese input `笑い声`) normalize to `laugh`. Select `t` + `laugh`
+for laughter alone, or `a` + `laugh` for verified spoken words delivered
+while laughing. `t` does not automatically approve audio for training.
 After each action, changes are atomically persisted to `review.csv`,
 without touching the WAV. An item tagged with `t` gets `decision=tagged`,
 **not** `approved`; it is ignored by export and by subsequent default
