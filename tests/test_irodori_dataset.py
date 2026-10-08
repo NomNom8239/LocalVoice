@@ -183,6 +183,47 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(review_path.read_bytes(), original)
         self.assertEqual(mod.digest(self.wav), self.original)
 
+    def test_triage_short_clip_uses_asr_status_after_opt_in(self):
+        with wave.open(str(self.wav), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b"\x00\x00" * 8000)
+        mod.scan(self.args, self.source, self.out)
+        original = (self.out / "review.csv").read_bytes()
+        clip = mod.read_csv(self.out / "inventory.csv")[0]
+        self.assertEqual(clip["scan_flag"], "short")
+
+        mod.triage(self.args, self.source, self.out)
+        self.assertEqual(
+            mod.read_csv(self.out / "triage.csv")[0]["review_group"],
+            "short_audio",
+        )
+
+        suggestion = {
+            "clip_id": clip["clip_id"], "sha256": clip["sha256"],
+            "asr_status": "no_detected_text_review_audio",
+            "asr_suggestion": "", "language": "ja", "error_detail": "",
+        }
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [suggestion])
+        mod.triage(self.args, self.source, self.out)
+        self.assertEqual(
+            mod.read_csv(self.out / "triage.csv")[0]["review_group"],
+            "no_detected_text",
+        )
+
+        suggestion.update(asr_status="suggested", asr_suggestion="はい")
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [suggestion])
+        mod.triage(self.args, self.source, self.out)
+        self.assertEqual(
+            mod.read_csv(self.out / "triage.csv")[0]["review_group"],
+            "expressive_or_unclear",
+        )
+        self.assertEqual((self.out / "review.csv").read_bytes(), original)
+        self.assertEqual(
+            mod.read_csv(self.out / "review.csv")[0]["decision"], "pending"
+        )
+
     def test_triage_flags_repeated_characters_without_auto_approval(self):
         mod.scan(self.args, self.source, self.out)
         clip = mod.read_csv(self.out / "inventory.csv")[0]
