@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -21,6 +21,7 @@ param(
     [switch]$IncludeShort,
     [switch]$Replace,
     [int]$MaxPerStyle = 3,
+    [string]$ConfigPath,
     [string]$Workspace
 )
 
@@ -142,6 +143,12 @@ if ($Action -eq "nonverbal-pilot") {
     $argsList = @($pilotDriver, "--profile", $Speaker,
                   "--max-per-style", [string]$MaxPerStyle)
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+}
+if ($Action -eq "nonverbal-check") {
+    $checkDriver = Join-Path $PSScriptRoot "irodori_nonverbal_check.py"
+    $argsList = @($checkDriver, "--profile", $Speaker)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($ConfigPath) { $argsList += @("--config", $ConfigPath) }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
