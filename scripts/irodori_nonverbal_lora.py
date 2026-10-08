@@ -87,7 +87,16 @@ def checkpoint_path(upstream: Path, given: str | None, *,
         return local, "missing"
     cached = try_to_load_from_cache(CHECKPOINT_REPO, CHECKPOINT_NAME)
     if isinstance(cached, str) and Path(cached).is_file():
-        return Path(cached).resolve(), "hf_cache"
+        path = Path(cached).resolve()
+        if fetch:
+            observed = file_hash(path)
+            if observed != CHECKPOINT_SHA256:
+                raise RuntimeError(
+                    "Cached official Irodori model SHA-256 mismatch; "
+                    f"expected {CHECKPOINT_SHA256}, observed {observed}."
+                )
+            return path, "official_hf_cache_sha256_verified"
+        return path, "hf_cache_existing_unverified"
     if not fetch:
         return local, "missing"
     obtained = Path(hf_hub_download(
