@@ -243,11 +243,35 @@ smoke test, not a statistically valid sample or performance measurement.
 `PLAN_ONLY` prints the proposed paths, model checkpoint status, and
 upstream `train.py` command.
 
-The full-precision **unquantized** Irodori v4.1-Small `model.safetensors`
-must be available locally to train (default:
-`Irodori-TTS/model.safetensors`; override via `-CheckpointPath`).
-The script does **not** download model weights automatically and never
-rebuilds CUDA dependencies. The generated train invocation is capped at
+The full-precision **unquantized** Irodori v4.1-Small
+`model.safetensors` must be available locally. The planner checks
+`Irodori-TTS/model.safetensors` and an existing Hugging Face cache copy
+without network traffic. You can provide an explicit path with
+`-CheckpointPath`.
+
+If the planner reports `checkpoint_exists=false`, explicitly fetch
+the **official 3.06 GB** checkpoint to the Hugging Face model cache
+(without training) via:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-lora -Speaker Ui_Shigure -FetchCheckpoint
+~~~
+
+The command reuses any cached copy and SHA-256 checks a new download
+against the official v4.1-Small model file. This does not duplicate the
+large model into the repository. The subsequent `nonverbal-lora` plan
+discovers the cached file automatically. A missing file is never silently
+replaced with a quantized checkpoint; no CUDA dependencies are rebuilt.
+Fetching and training cannot be performed in one command.
+
+**Manifest path correction:** Upstream Irodori resolves
+`latent_path` relative to the location of its containing manifest.
+The pilot plan rebases every train/holdout latent path to the existing
+absolute `codec_attempt_001/latents/*.pt` file before writing split
+manifests, and re-verifies that those files are present. It never
+moves/re-encodes any of the six latents.
+
+The generated train invocation is capped at
 24 steps, batch size 1, single-process Windows dataloader, AdamW,
 gradient checkpointing and no W&B. These are conservative *initial*
 memory settings; RTX 5060 Ti variants have different VRAM sizes and a
