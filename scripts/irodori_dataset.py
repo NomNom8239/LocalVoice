@@ -60,7 +60,7 @@ def audio_info(path: Path) -> tuple[float, int, int]:
     # ffprobe supports the float PCM produced by the LocalVoice pipeline.
     process = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a:0",
-         "-show_entries", "stream=duration,sample_rate,channels",
+         "-show_entries", "format=duration:stream=sample_rate,channels",
          "-of", "json", str(path)], text=True, capture_output=True,
         encoding="utf-8", check=False,
     )
@@ -68,7 +68,7 @@ def audio_info(path: Path) -> tuple[float, int, int]:
         streams = json.loads(process.stdout).get("streams") or []
         if streams:
             s = streams[0]
-            duration = s.get("duration")
+            duration = (json.loads(process.stdout).get("format") or {}).get("duration")
             if duration not in (None, "N/A"):
                 return float(duration), int(s["sample_rate"]), int(s["channels"])
     # Fallback for ordinary PCM files.
