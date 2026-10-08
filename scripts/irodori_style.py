@@ -300,6 +300,15 @@ def evaluate_pilot(args: argparse.Namespace) -> None:
             evaluation = "rejected_audio"
         elif decision == "tagged":
             evaluation = "tentative_match" if candidate == human_style else "tentative_mismatch"
+        elif decision == "style_confirmed":
+            # Style-only human listening is enough to evaluate style predictions.
+            # Text, caption, and speaker/quality are deliberately not required.
+            if candidate == "unknown":
+                evaluation = "abstained"
+            elif candidate == human_style:
+                evaluation = "confirmed_match"
+            else:
+                evaluation = "confirmed_mismatch"
         elif decision in {"approved", "needs_text", "needs_caption"}:
             if (row.get("speaker_ok", "").lower() != "yes" or
                     row.get("quality", "").lower() != "good"):
