@@ -259,6 +259,88 @@ def run(args: argparse.Namespace, *, classifier_factory=AudioSetClassifier) -> N
     print("Human review.csv, decisions, transcripts, and WAVs were NOT changed.")
 
 
+
+EVAL_COLUMNS = (
+    "clip_id", "candidate_style", "candidate_score",
+    "human_decision", "human_style", "evaluation",
+    "uncertainty", "reason",
+)
+
+
+def evaluate_pilot(args: argparse.Namespace) -> None:
+    """Join experimental predictions with manually reviewed labels.
+
+    Only explicit speaker/style confirmations (approved, needs_text) count
+    as ground truth. Tentative 'tagged' decisions do not count as confirmed.
+    """
+    _, out = paths(args)
+    prediction_path = out / "style_suggestions.csv"
+    if not prediction_path.is_file():
+        raise FileNotFoundError(f"Classify a pilot first: {prediction_path}")
+    predictions = read_csv(prediction_path)
+    review_rows = read_csv(out / "review.csv")
+    reviews = {row["clip_id"]: row for row in review_rows}
+    if len(reviews) != len(review_rows):
+        raise ValueError("Duplicate clip IDs in review.csv")
+
+    result_rows: list[dict[str, str]] = []
+    counts: Counter[str] = Counter()
+    for item in predictions:
+        row = reviews.get(item["clip_id"])
+        if not row or row.get("sha256") != item.get("sha256"):
+            raise ValueError(f"Unmatched or changed source for {item['clip_id']}")
+        decision = row.get("decision", "").strip().lower()
+        human_style = row.get("style", "").strip().lower()
+        candidate = item.get("candidate_style", "")
+        status = item.get("status", "")
+        evaluation = "pending"
+        if status != "suggested":
+            evaluation = "classifier_error"
+        elif decision == "rejected":
+            evaluation = "rejected_audio"
+        elif decision == "tagged":
+            evaluation = "tentative_match" if candidate == human_style else "tentative_mismatch"
+        elif decision in {"approved", "needs_text"}:
+            if (row.get("speaker_ok", "").lower() != "yes" or
+                    row.get("quality", "").lower() != "good"):
+                evaluation = "unconfirmed_quality"
+            elif candidate == "unknown":
+                evaluation = "abstained"
+            elif candidate == human_style:
+                evaluation = "confirmed_match"
+            else:
+                evaluation = "confirmed_mismatch"
+        counts[evaluation] += 1
+        result_rows.append({
+            "clip_id": item["clip_id"],
+            "candidate_style": candidate,
+            "candidate_score": item.get("candidate_score", ""),
+            "human_decision": decision,
+            "human_style": human_style,
+            "evaluation": evaluation,
+            "uncertainty": item.get("uncertainty", ""),
+            "reason": item.get("reason", ""),
+        })
+
+    outpath = out / "style_pilot_evaluation.csv"
+    write_csv(outpath, EVAL_COLUMNS, result_rows)
+    confirmed = counts["confirmed_match"] + counts["confirmed_mismatch"]
+    summary = {
+        "pilot_predictions": len(result_rows),
+        "evaluation_counts": dict(counts),
+        "confirmed_comparable": confirmed,
+        "confirmed_agreement": (
+            f"{counts['confirmed_match']}/{confirmed}" if confirmed else "not_enough_confirmed_labels"
+        ),
+        "note": (
+            "NOT population accuracy. Tentative tags, rejected audio and "
+            "model abstentions are not counted as confirmed matches."
+        ),
+        "evaluation_file": str(outpath),
+    }
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", required=True)
@@ -267,9 +349,13 @@ def main() -> int:
     parser.add_argument("--group", default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--retry-errors", action="store_true")
+    parser.add_argument("--evaluate", action="store_true", help="Compare model pilot with human labels without inference")
     args = parser.parse_args()
     try:
-        run(args)
+        if args.evaluate:
+            evaluate_pilot(args)
+        else:
+            run(args)
         return 0
     except (RuntimeError, FileNotFoundError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
