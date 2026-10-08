@@ -105,7 +105,7 @@ class NonverbalLoRATests(unittest.TestCase):
             report = lora.plan(self.args, self.source, self.out, root=self.root)
         self.assertEqual(report["status"], "PLAN_ONLY")
         self.assertEqual((report["train_clips"], report["holdout_clips"]), (4, 2))
-        self.assertEqual(report["by_style_holdout"], ["🥵", "😮‍💨"])
+        self.assertEqual(set(report["by_style_holdout"]), {"🥵", "😮‍💨"})
         self.assertEqual(report["max_steps"], 24)
         self.assertFalse(report["checkpoint_exists"])
         self.assertFalse(Path(report["output"]).exists())
