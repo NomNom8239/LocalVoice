@@ -26,7 +26,7 @@ The first `asr` invocation creates a separate `LocalVoice/.venv-asr` with `uv`. 
 
 For each approved clip, listen to the audio and enter a verified `text`, `style`, and a `caption` for special delivery. Set `speaker_ok=yes`, `quality=good`, `decision=approved` only after checking the content.
 
-ASR writes suggestions, never verified text or approval. Short clips remain candidates for manual review. No algorithm is claimed to reliably label breaths or groans without listening.
+ASR writes suggestions, never verified text or approval. A successful ASR run automatically merges only suggestion fields into `review.csv`; a separate `merge` command is no longer needed. `status` shows the live status counts from both the review sheet and the ASR suggestion file, so older errors without details cannot obscure new successes. Short clips remain candidates for manual review. No algorithm is claimed to reliably label breaths or groans without listening.
 
 `export` rechecks file hashes and outputs `dataset_for_prepare_manifest.csv` with columns `audio,text,caption,speaker`. This is an intermediate CSV, not the Irodori latent JSONL manifest. Upstream `prepare_manifest.py` remains a separate validated step.
 
