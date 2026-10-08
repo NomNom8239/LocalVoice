@@ -67,6 +67,18 @@ def sound_hint(hint: dict[str, str]) -> tuple[str, str]:
     return value, "style_prediction_candidate"
 
 
+def strong_style(hint: dict[str, str], state: str) -> bool:
+    """Conservative routing heuristic, never a calibrated confidence."""
+    if state != "style_prediction_candidate":
+        return False
+    try:
+        top = float(hint.get("candidate_score", ""))
+        second = float(hint.get("runner_up_score", ""))
+    except ValueError:
+        return False
+    return top >= 0.70 and top - second >= 0.20
+
+
 def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object]:
     """Non-interactive assembly; WAV and human judgments remain untouched."""
     reviews = read_csv(out / "review.csv")
@@ -133,15 +145,26 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
             else:
                 route, reason = "training_candidate", "human_tentative_style_with_asr_text"
         elif origin in {"my_voice", "review_approved"}:
-            if st and (style != "normal" or state != "style_prediction_candidate"):
-                route, reason = "ambiguous_vocal_style", "speech_vs_audio_style_disagreement"
-            else:
+            if not st or (style == "normal" and state == "style_prediction_candidate"):
                 style, style_source = "normal", "curated_source_normal_default"
                 caption = CAPTIONS["normal"]
                 route, reason = "training_candidate", "curated_source_with_asr"
+            elif strong_style(st, state):
+                style_source = "ast_strong_heuristic_unverified"
+                caption = CAPTIONS.get(style, "")
+                route, reason = "training_candidate", "strong_non_normal_event_candidate"
+            else:
+                route, reason = "ambiguous_vocal_style", "speech_vs_audio_style_disagreement"
         elif origin == "review_emotion":
             if not st:
                 route, reason = "automatic_processing", "missing_style_inference"
+            elif strong_style(st, state):
+                if style == "normal":
+                    style, style_source = "emotion", "emotional_source_plus_ast_speech"
+                else:
+                    style_source = "ast_strong_heuristic_unverified"
+                caption = CAPTIONS[style]
+                route, reason = "training_candidate", "strong_event_plus_emotional_source"
             else:
                 route, reason = "ambiguous_vocal_style", "expressive_delivery_needs_identification"
         else:
