@@ -3,10 +3,12 @@ import argparse
 import contextlib
 import io
 import json
+import sys
 import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts import irodori_dataset as ds
 from scripts import irodori_nonverbal_check as check
@@ -108,6 +110,14 @@ class NonverbalCheckTests(unittest.TestCase):
             check.build(self.args, self.source, self.out,
                         tokenizer_loader=lambda spec: FakeTokenizer())
         self.assertFalse((self.out / "nonverbal_pilot/tokenizer_audit.csv").exists())
+
+    def test_missing_sentencepiece_is_reported_before_tokenizer_download(self):
+        with patch.dict(sys.modules, {"sentencepiece": None}):
+            with self.assertRaisesRegex(RuntimeError, "sentencepiece"):
+                check.load_tokenizer({
+                    "text_tokenizer_repo": "fake/not-downloaded",
+                    "text_encoder_revision": "immutable-revision",
+                })
 
     def test_model_config_must_be_pinned(self):
         self.config.write_text(
