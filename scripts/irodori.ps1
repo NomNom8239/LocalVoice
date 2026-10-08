@@ -9,9 +9,10 @@ param(
     [int]$Limit = 30,
     [ValidateSet("emotion", "other", "all")]
     [string]$Kind = "emotion",
-    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio")]
+    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal")]
     [string]$Group,
     [switch]$NoPlay,
+    [switch]$IncludeTagged,
     [switch]$RetryErrors,
     [switch]$Replace,
     [string]$Workspace
@@ -93,6 +94,7 @@ if ($Action -eq "review") {
     $argsList += @("--kind", $Kind, "--limit", [string]$Limit)
     if ($Group) { $argsList += @("--group", $Group) }
     if ($NoPlay) { $argsList += "--no-play" }
+    if ($IncludeTagged) { $argsList += "--include-tagged" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
