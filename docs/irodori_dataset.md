@@ -368,6 +368,53 @@ runs, and the comparison runner also verifies the actual adapter
 checkpoint files. New runs mark completion explicitly and fail if
 the checkpoint files are missing.
 
+## Automated paired evaluation: signal / AudioSet / Japanese ASR
+
+Once `nonverbal-compare -Run` has produced
+`PAIRED_WAVS_READY_NOT_QUALITY_VALIDATED`, prepare an evaluation plan
+(no models loaded, no new files):
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-evaluate -Speaker Ui_Shigure
+~~~
+
+Run the automatic, **read-only-on-source** diagnostics:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-evaluate -Speaker Ui_Shigure -Run
+~~~
+
+The command verifies all **five matched base/LoRA pairs** and immutable
+comparison conditions. It writes its results under
+`lora_attempt_001/comparison_001/analysis_NNN/result.json` and
+does not edit any original WAVs, decisions, experimental adapter or
+training manifests. Each new attempt uses a separate numbered directory.
+
+Metrics, intentionally kept separate:
+
+- **Signal health:** FFmpeg-decoded mono float32 RMS (dBFS), peak,
+  fraction of near-silent samples, clipped fraction, duration and file
+  SHA-256. IEEE float WAV is supported.
+- **Uncalibrated AudioSet AST:** reuse the already installed
+  `MIT/ast-finetuned-audioset-10-10-0.4593` to compare raw voice-event
+  scores for `breath`, `groan`, or `normal`. Neither a higher score
+  nor a suggested class is proof the generated vocalization is correct.
+- **Ordinary Japanese speech retention:** a separate CPU subprocess
+  in `.venv-asr` reuses the cached `faster-whisper/small` model,
+  transcribes only the two normal-speech files, and computes normalized
+  character error rate (CER) against the fixed Japanese test sentence.
+  No model is silently downloaded; missing ASR dependencies/cache
+  fail clearly.
+
+The result status is
+`OBJECTIVE_DIAGNOSTICS_ONLY_NOT_QUALITY_VALIDATED`.
+Even if WAVs look valid, the 24-step/4-training-clip experiment and
+AST's uncalibrated audio event scores **cannot establish naturalness,
+speaker identity, nonverbal fidelity, or a useful LoRA**. Human manual
+audio classification is not requested by this command. The 106 deferred
+source audio clips and five ambiguous labels remain outside this pilot
+and are not retroactively changed by any generated-audio result.
+
 **Validation gates before actual training:**
 1. Check tokenizer acceptance and whether standalone emoji is preserved as a
    meaningful text condition (not just a nonempty string).
