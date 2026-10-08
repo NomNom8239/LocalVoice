@@ -225,14 +225,33 @@ def merge(args, source: Path, out: Path) -> None:
     updated = 0
     for row in rows:
         candidate = lookup.get(row["clip_id"])
-        if (candidate and candidate["sha256"] == row["sha256"]
-                and candidate["asr_status"] in {"suggested", "no_detected_text_review_audio"}
-                and not row.get("asr_suggestion")):
-            row["asr_suggestion"] = candidate["asr_suggestion"]
-            row["asr_status"] = candidate["asr_status"]
-            updated += 1
-    write_csv(out / "review.csv", COLUMNS, rows)
-    print(f"Merged {updated} suggestions; manual text and approval were NOT altered")
+        if not candidate or candidate.get("sha256") != row.get("sha256"):
+            continue
+        if candidate.get("asr_status") not in {
+            "suggested", "no_detected_text_review_audio"
+        }:
+            continue
+
+        new_text = candidate.get("asr_suggestion", "")
+        new_status = candidate["asr_status"]
+        # Preserve nonempty review-side suggestions. Human-confirmed 'text',
+        # speaker/quality, and decisions are never changed by ASR.
+        if row.get("asr_suggestion") and row["asr_suggestion"] != new_text:
+            continue
+        if (row.get("asr_suggestion", "") == new_text
+                and row.get("asr_status", "") == new_status):
+            continue
+
+        row["asr_suggestion"] = new_text
+        row["asr_status"] = new_status
+        updated += 1
+
+    if updated:
+        write_csv(out / "review.csv", COLUMNS, rows)
+    print(
+        f"Merged {updated} new/changed suggestions; "
+        "manual text and approval were NOT altered"
+    )
 
 
 def status(args, source: Path, out: Path) -> None:
