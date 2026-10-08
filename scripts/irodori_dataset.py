@@ -318,10 +318,10 @@ def triage(args, source: Path, out: Path) -> None:
             rank, group, why = (7, "tagged_nonverbal", "Tagged for later transcription/manifest review")
         elif flag in {"unreadable", "low_sample_rate"}:
             rank, group, why = (0, "invalid_audio", "Inspect or reject corrupted/unsupported audio")
-        elif flag == "short":
-            rank, group, why = (1, "short_audio", "Listen: short clip, ASR not run")
         elif status == "no_detected_text_review_audio":
-            rank, group, why = (2, "no_detected_text", "Listen: could be silence, noise or nonverbal voice")
+            rank, group, why = (2, "no_detected_text", "Listen: ASR found no speech; could be silence, noise or nonverbal voice")
+        elif flag == "short" and status != "suggested":
+            rank, group, why = (1, "short_audio", "Listen: short clip with no ASR transcript yet")
         elif len(text) < 5 or re.search(r"(.)\1{3,}", text):
             rank, group, why = (3, "expressive_or_unclear", "Listen: very short or repeated text; label manually")
         elif len(text) < 10:
