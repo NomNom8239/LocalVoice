@@ -1,7 +1,11 @@
 """Regression checks for the read-only Irodori dataset staging workflow."""
 import argparse
-import csv
+import contextlib
+import io
+import json
+import sys
 import tempfile
+import types
 import unittest
 import wave
 from pathlib import Path
@@ -80,6 +84,46 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(row["asr_suggestion"], "テスト")
         self.assertEqual(row["decision"], "pending")
         self.assertFalse(row["text"])
+
+    def test_status_reports_asr_results_separately_from_review(self):
+        mod.scan(self.args, self.source, self.out)
+        clip = mod.read_csv(self.out / "inventory.csv")[0]
+        mod.write_csv(self.out / "asr_suggestions.csv", mod.ASR_COLUMNS, [{
+            "clip_id": clip["clip_id"], "sha256": clip["sha256"],
+            "asr_status": "suggested", "asr_suggestion": "テスト",
+            "language": "ja", "error_detail": "",
+        }])
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            mod.status(self.args, self.source, self.out)
+        report = json.loads(buffer.getvalue())
+        self.assertEqual(report["review_asr_status"][""], 1)
+        self.assertEqual(report["asr_suggestions"]["statuses"]["suggested"], 1)
+        self.assertEqual(report["asr_suggestions"]["total_attempted"], 1)
+
+    def test_asr_populates_suggestion_not_human_verified_text(self):
+        mod.scan(self.args, self.source, self.out)
+        class FakeModel:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def transcribe(self, *args, **kwargs):
+                return ([types.SimpleNamespace(text="こんにちは")],
+                        types.SimpleNamespace(language="ja"))
+
+        fake = types.ModuleType("faster_whisper")
+        fake.WhisperModel = FakeModel
+        args = argparse.Namespace(
+            model="small", device="cpu", compute_type="int8",
+            retry_errors=False, limit=1,
+        )
+        with patch.dict(sys.modules, {"faster_whisper": fake}):
+            mod.asr(args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["asr_status"], "suggested")
+        self.assertEqual(row["asr_suggestion"], "こんにちは")
+        self.assertEqual(row["decision"], "pending")
+        self.assertEqual(row["text"], "")
 
     def test_existing_workspace_is_reused(self):
         legacy = self.root / "Irodori-TTS" / "outputs" / "localvoice_lora_dataset"
