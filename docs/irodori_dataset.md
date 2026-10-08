@@ -11,6 +11,7 @@ From the LocalVoice repository root:
 .\scripts\irodori.ps1 asr -Speaker Toto_Kogara -RetryErrors -Limit 1
 .\scripts\irodori.ps1 asr -Speaker Toto_Kogara -RetryErrors -Limit 30
 .\scripts\irodori.ps1 merge -Speaker Toto_Kogara
+.\scripts\irodori.ps1 triage -Speaker Toto_Kogara
 .\scripts\irodori.ps1 export -Speaker Toto_Kogara
 ```
 
@@ -21,6 +22,18 @@ The input WAV directory is `data/training_audio/Toto_Kogara/audio/` and is never
 ### ASR environment
 
 The first `asr` invocation creates a separate `LocalVoice/.venv-asr` with `uv`. It installs a compatible pair (`faster-whisper==1.2.1`, `av==18.1.0`) and **repairs an existing ASR environment** that has incompatible PyAV 19 installed. PyAV 19 removed `metadata_errors` from `av.open`, which faster-whisper 1.2.1 still uses. Later runs reuse this environment. CPU/int8 is the default, preserving the existing RVC and Irodori CUDA environments. On a failure, `asr_suggestions.csv` retains `error_detail`, and processing stops after three consecutive errors. `-RetryErrors` retries only previously failed suggestions; try `-Limit 1` first.
+
+### Priority review queue
+
+Run `triage` after ASR to create `triage.csv` in the existing workspace.
+It reads the 1,167-row review table and ASR suggestions without changing
+either, then groups **pending** clips by review priority: invalid audio,
+short audio (not sent to ASR), speech not detected, very brief/repeated
+utterances, short transcripts and ordinary candidates.
+
+These groups are *inspection hints*, not automatic confirmations of
+breathing, groaning, whispering or the correct speaker. Listen and edit
+`review.csv` (not `triage.csv`) to approve/reject clips.
 
 ### Human review gate
 
