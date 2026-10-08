@@ -70,12 +70,25 @@ def checkpoint_path(upstream: Path, given: str | None, *,
     Never downloads a 3 GB file unless --fetch-checkpoint was requested.
     The official download is SHA-256 checked and reused from the HF cache.
     """
+    if given and fetch:
+        raise ValueError(
+            "Use either -CheckpointPath for an existing model or -FetchCheckpoint "
+            "for the official verified file, not both."
+        )
     if given:
         selected = Path(given).expanduser().resolve()
         return selected, "user_selected"
     local = (upstream / CHECKPOINT_NAME).resolve()
     if local.is_file():
-        return local, "upstream_existing"
+        if fetch:
+            observed = file_hash(local)
+            if observed != CHECKPOINT_SHA256:
+                raise RuntimeError(
+                    "Local Irodori model SHA-256 mismatch; "
+                    f"expected {CHECKPOINT_SHA256}, observed {observed}."
+                )
+            return local, "official_local_sha256_verified"
+        return local, "upstream_existing_unverified"
     try:
         from huggingface_hub import hf_hub_download, try_to_load_from_cache
     except ImportError:
