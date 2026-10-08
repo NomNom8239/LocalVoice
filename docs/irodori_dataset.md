@@ -7,16 +7,16 @@ LocalVoice owns collection, speaker review and provenance. Irodori-TTS remains a
 From the LocalVoice repository root:
 
 ```powershell
-.\scripts\irodori.ps1 status -Speaker <profile>
-.\scripts\irodori.ps1 asr -Speaker <profile> -RetryErrors -Limit 1
-.\scripts\irodori.ps1 asr -Speaker <profile> -RetryErrors -Limit 30
-.\scripts\irodori.ps1 merge -Speaker <profile>
-.\scripts\irodori.ps1 export -Speaker <profile>
+.\scripts\irodori.ps1 status -Speaker Toto_Kogara
+.\scripts\irodori.ps1 asr -Speaker Toto_Kogara -RetryErrors -Limit 1
+.\scripts\irodori.ps1 asr -Speaker Toto_Kogara -RetryErrors -Limit 30
+.\scripts\irodori.ps1 merge -Speaker Toto_Kogara
+.\scripts\irodori.ps1 export -Speaker Toto_Kogara
 ```
 
-Use `scan` only when no review workspace exists. An existing `Irodori-TTS/outputs/localvoice_lora_dataset/review.csv` is reused automatically; otherwise the workspace is `data/irodori_lora/<profile>/`.
+Use `scan` only when no review workspace exists. An existing `Irodori-TTS/outputs/localvoice_lora_dataset/review.csv` is reused automatically; otherwise the workspace is `data/irodori_lora/Toto_Kogara/`.
 
-The input WAV directory is `data/training_audio/<profile>/audio/` and is never changed. Git excludes `data/`. Existing `training_audio/<profile>/manifest.tsv` supplies optional provenance. Never copy material back into `reference_bank` automatically.
+The input WAV directory is `data/training_audio/Toto_Kogara/audio/` and is never changed. Git excludes `data/`. Existing `training_audio/Toto_Kogara/manifest.tsv` supplies optional provenance. Never copy material back into `reference_bank` automatically.
 
 ### ASR environment
 
