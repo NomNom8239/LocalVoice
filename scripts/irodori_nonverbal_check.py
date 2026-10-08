@@ -46,16 +46,38 @@ def tokenizer_spec(config_path: Path) -> dict[str, object]:
 
 
 def load_tokenizer(spec: dict[str, object]):
+    # ModernBERT Japanese uses a SentencePiece-backed tokenizer. The HF
+    # tokenizer files can download even when this required local dependency
+    # is absent, causing a misleading conversion exception afterwards.
+    try:
+        import sentencepiece  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "Irodori tokenizer dependency 'sentencepiece' is missing in "
+            "LocalVoice .venv. Re-run the PowerShell nonverbal-check action "
+            "to install it automatically, or install it with: "
+            "uv pip install --python .\\.venv\\Scripts\\python.exe "
+            "'sentencepiece>=0.2,<0.3'"
+        ) from exc
     try:
         from transformers import AutoTokenizer
     except ImportError as exc:
         raise RuntimeError("Install transformers in LocalVoice .venv for tokenizer check") from exc
-    return AutoTokenizer.from_pretrained(
-        spec["text_tokenizer_repo"],
-        revision=spec["text_encoder_revision"],
-        trust_remote_code=False,
-        use_fast=True,
-    )
+    try:
+        return AutoTokenizer.from_pretrained(
+            spec["text_tokenizer_repo"],
+            revision=spec["text_encoder_revision"],
+            trust_remote_code=False,
+            use_fast=True,
+        )
+    except (ValueError, ImportError) as exc:
+        if "sentencepiece" in str(exc).lower():
+            raise RuntimeError(
+                "The Irodori SentencePiece tokenizer could not be initialized. "
+                "Check that 'sentencepiece' imports inside LocalVoice .venv "
+                "and that the tokenizer revision matches the v4-Small config."
+            ) from exc
+        raise
 
 
 def atomic_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
