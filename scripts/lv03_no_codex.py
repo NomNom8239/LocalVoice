@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LV-03 DACVAE recovery without Codex. Run from the LocalVoice repository root:
+r"""LV-03 DACVAE recovery without Codex. Run from the LocalVoice repository root:
 
     .\.venv\Scripts\python.exe .\scripts\lv03_no_codex.py
 
