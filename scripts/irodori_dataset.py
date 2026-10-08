@@ -318,7 +318,7 @@ def triage(args, source: Path, out: Path) -> None:
     output: list[dict[str, str | int]] = []
     counts: Counter[str] = Counter()
     for review in reviews:
-        if review.get("decision", "").strip().lower() not in {"pending", "tagged", "needs_text"}:
+        if review.get("decision", "").strip().lower() not in {"pending", "tagged", "needs_text", "needs_caption"}:
             continue
         suggestion = suggestions.get(review["clip_id"], {})
         if suggestion and suggestion.get("sha256") != review.get("sha256"):
@@ -327,10 +327,12 @@ def triage(args, source: Path, out: Path) -> None:
         text = review.get("asr_suggestion") or suggestion.get("asr_suggestion", "")
         text = text.strip()
         flag = review.get("scan_flag", "")
-        if review.get("decision", "").strip().lower() == "needs_text":
-            rank, group, why = (6, "needs_transcript", "Voice/style verified; transcription still needs confirmation")
+        if review.get("decision", "").strip().lower() == "needs_caption":
+            rank, group, why = (6, "needs_caption", "Transcript and voice/style verified; delivery caption still needed")
+        elif review.get("decision", "").strip().lower() == "needs_text":
+            rank, group, why = (7, "needs_transcript", "Voice/style verified; transcription still needs confirmation")
         elif review.get("decision", "").strip().lower() == "tagged":
-            rank, group, why = (7, "tagged_nonverbal", "Tagged for later transcription/manifest review")
+            rank, group, why = (8, "tagged_nonverbal", "Tagged for later transcription/manifest review")
         elif flag in {"unreadable", "low_sample_rate"}:
             rank, group, why = (0, "invalid_audio", "Inspect or reject corrupted/unsupported audio")
         elif status == "no_detected_text_review_audio":
@@ -368,6 +370,7 @@ def triage(args, source: Path, out: Path) -> None:
         "pending": sum(r["decision"] == "pending" for r in output),
         "tagged_for_later": sum(r["decision"] == "tagged" for r in output),
         "needs_transcript": sum(r["decision"] == "needs_text" for r in output),
+        "needs_caption": sum(r["decision"] == "needs_caption" for r in output),
         "queue_total": len(output),
         "groups": dict(counts)
     }, ensure_ascii=False, indent=2))
@@ -424,11 +427,13 @@ def review(args, source: Path, out: Path) -> None:
         ):
             continue
         decision = entry.get("decision", "").strip().lower()
-        if decision not in {"pending", "tagged", "needs_text"}:
+        if decision not in {"pending", "tagged", "needs_text", "needs_caption"}:
             continue
         if decision == "tagged" and not args.include_tagged:
             continue
         if decision == "needs_text" and args.group != "needs_transcript":
+            continue
+        if decision == "needs_caption" and args.group != "needs_caption":
             continue
         origin = review_origin(entry)
         if args.kind == "emotion" and origin != "review_emotion":
@@ -515,29 +520,58 @@ def review(args, source: Path, out: Path) -> None:
                 else:
                     if hint:
                         print("ASR text is unverified. Type corrected text or '=' to explicitly confirm the suggestion.")
-                    print("Press Enter to save the speaker/style check and defer transcription.")
-                    prompt = f"Verified transcription [{hint}]: " if hint else "Verified transcription (optional now): "
+                    existing_text = entry.get("text", "").strip()
+                    if existing_text:
+                        print("Existing human-verified transcript: " + existing_text)
+                        print("Press Enter to KEEP it, or type corrected words.")
+                    else:
+                        print("Press Enter to save the speaker/style check and defer transcription.")
+                    prompt = (
+                        f"Verified transcription [{existing_text}] (Enter=keep): "
+                        if existing_text else (
+                            f"Verified transcription [{hint}] (=confirm ASR; Enter=defer): "
+                            if hint else "Verified transcription (optional now): "
+                        )
+                    )
                     typed = input(prompt).strip()
-                    verified = hint if typed == "=" and hint else (typed if typed != "=" else "")
+                    if existing_text:
+                        verified = typed or existing_text
+                    else:
+                        verified = hint if typed == "=" and hint else (typed if typed != "=" else "")
                     caption = ""
                     if verified:
-                        caption = input("Verified caption (required for special styles; Enter for normal): ").strip()
-                        if style in SPECIAL_STYLES and not caption:
-                            print("Caption is required for special delivery; nothing saved.")
-                            continue
+                        existing_caption = entry.get("caption", "").strip()
+                        caption_prompt = (
+                            f"Delivery caption [{existing_caption}] (Enter=keep): "
+                            if existing_caption else (
+                                "Verified caption (Enter to defer; required before export for special styles): "
+                                if style in SPECIAL_STYLES
+                                else "Verified caption (optional; Enter to skip): "
+                            )
+                        )
+                        caption = input(caption_prompt).strip() or existing_caption
                     if input("Confirm speaker and quality good? [y/N]: ").strip().lower() != "y":
-                        print("Not confirmed; no approval saved.")
+                        print("Not confirmed; no changes saved.")
                         continue
+                    decision = (
+                        "needs_text" if not verified else (
+                            "needs_caption" if style in SPECIAL_STYLES and not caption
+                            else "approved"
+                        )
+                    )
                     entry.update({
                         "text": verified,
                         "caption": caption if verified else "",
                         "style": style,
                         "speaker_ok": "yes",
                         "quality": "good",
-                        "decision": "approved" if verified else "needs_text",
+                        "decision": decision,
                     })
-                    if not verified:
-                        print("Saved voice/style confirmation as needs_text; NOT export-ready.")
+                    if decision != "approved":
+                        print(
+                            f"Saved human voice/style check as {decision}; "
+                            "NOT export-ready."
+                        )
             write_csv(review_path, columns, reviews)
             done += 1
             print(f"Saved: {entry['decision']} / {entry.get('style', '')} ({done} in this session)")
@@ -608,7 +642,7 @@ def main() -> int:
     p.add_argument("--kind", choices=("emotion", "other", "all"), default="emotion")
     p.add_argument("--group", choices=(
         "short_audio", "no_detected_text", "expressive_or_unclear",
-        "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript"
+        "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript", "needs_caption"
     ))
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--no-play", action="store_true")
