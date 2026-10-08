@@ -90,3 +90,36 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
         for name, item in (("ASR", ar), ("AST", st)):
             if item and item.get("sha256") != row["sha256"]:
                 raise ValueError(f"Stale {name} result: {cid}")
+
+        decision = row.get("decision", "").strip().lower()
+        origin = review_origin(row)
+        style, state = sound_hint(st)
+        human_style = normalize_style(row.get("style", ""))
+        confirmed = decision in {"approved", "needs_text", "needs_caption"}
+        tentative = decision == "tagged"
+        if (confirmed or tentative) and human_style in CAPTIONS:
+            style = human_style
+            style_source = "human_confirmed" if confirmed else "human_tentative"
+        else:
+            style_source = "ast_experimental" if st else "not_available"
+        verified_text = row.get("text", "").strip() if confirmed else ""
+        asr_text = ar.get("asr_suggestion", "").strip() if ar.get("asr_status") == "suggested" else ""
+        content = verified_text or asr_text
+        text_source = ("human_verified" if verified_text else
+                       "asr_unverified" if asr_text else "none")
+        caption = (row.get("caption", "").strip() if confirmed else "") or CAPTIONS.get(style, "")
+        route, reason = "", ""
+
+        if decision == "rejected":
+            route, reason = "excluded", "human_rejected"
+        elif row.get("scan_flag") in {"unreadable", "low_sample_rate", "long"}:
+            route, reason = "excluded", "invalid_or_out_of_range_audio"
+        elif decision not in {"pending", "tagged", "approved", "needs_text", "needs_caption"}:
+            route, reason = "excluded", "unknown_decision"
+        elif not content:
+            if style in NONVERBAL and (confirmed or tentative or state == "style_prediction_candidate"):
+                route, reason = "nonverbal_experiment", "nonverbal_text_protocol_unvalidated"
+            elif state in {"not_classified", "classification_failed"}:
+                route, reason = "automatic_processing", "missing_style_inference"
+            else:
+                route, reason = "ambiguous_vocal_style", "speech_vs_nonverbal_uncertain"
