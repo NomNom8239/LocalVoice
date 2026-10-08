@@ -104,6 +104,31 @@ elseif (-not (Test-Path -LiteralPath $python)) {
     throw "LocalVoice .venv was not found: $python"
 }
 
+if ($Action -eq "nonverbal-check") {
+    # v4-Small uses the SentencePiece-based ModernBERT Japanese tokenizer.
+    # Hugging Face may download tokenizer.model successfully, then fail
+    # instantiation when the local .venv does not provide sentencepiece.
+    $probe = "import importlib.util as u; print('present' if u.find_spec('sentencepiece') else 'missing')"
+    $packageState = & $python -c $probe
+    if ($LASTEXITCODE -ne 0) {
+        throw "Nonverbal tokenizer dependency probe failed"
+    }
+    if ($packageState -ne "present") {
+        if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+            throw "SentencePiece is missing. Install uv, or install it into LocalVoice .venv: .\.venv\Scripts\python.exe -m pip install sentencepiece"
+        }
+        Write-Host "Installing missing Irodori tokenizer dependency (sentencepiece) into LocalVoice .venv..."
+        Invoke-NativeChecked -Executable "uv" -Arguments @(
+            "pip", "install", "--python", $python, "sentencepiece>=0.2,<0.3"
+        ) -FailureMessage "Irodori tokenizer dependency installation failed"
+    }
+    # Verify actual import (not only package metadata) before downloading
+    # or loading any additional Hugging Face artifacts.
+    Invoke-NativeChecked -Executable $python -Arguments @(
+        "-c", "import sentencepiece; print('SentencePiece ready:', sentencepiece.__version__)"
+    ) -FailureMessage "SentencePiece remains unavailable in LocalVoice .venv"
+}
+
 $argsList = @($driver, "--profile", $Speaker)
 if ($Workspace) { $argsList += @("--workspace", $Workspace) }
 $argsList += $Action
