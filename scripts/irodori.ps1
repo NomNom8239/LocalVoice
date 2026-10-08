@@ -9,11 +9,12 @@ param(
     [int]$Limit = 30,
     [ValidateSet("emotion", "other", "all")]
     [string]$Kind = "emotion",
-    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal")]
+    [ValidateSet("short_audio", "no_detected_text", "expressive_or_unclear", "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal", "needs_transcript")]
     [string]$Group,
     [switch]$NoPlay,
     [switch]$IncludeTagged,
     [switch]$RetryErrors,
+    [switch]$IncludeShort,
     [switch]$Replace,
     [string]$Workspace
 )
@@ -89,6 +90,7 @@ $argsList += $Action
 if ($Action -eq "asr") {
     $argsList += @("--limit", [string]$Limit)
     if ($RetryErrors) { $argsList += "--retry-errors" }
+    if ($IncludeShort) { $argsList += "--include-short" }
 }
 if ($Action -eq "review") {
     $argsList += @("--kind", $Kind, "--limit", [string]$Limit)
