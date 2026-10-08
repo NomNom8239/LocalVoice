@@ -159,3 +159,43 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
                 "candidate_style": style or "unknown",
                 "top_events": st.get("top_events_json", ""), "reason": reason,
             })
+        if route == "nonverbal_experiment":
+            experiments.append({
+                "clip_id": cid, "source_path": str(wav), "sha256": row["sha256"],
+                "style": style, "style_source": style_source,
+                "possible_emoji_text": EMOJI_HINTS.get(style, ""),
+                "auto_caption": caption, "reason": reason + ";not_training_ready",
+            })
+        summary[route] += 1
+        details.append({
+            "clip_id": cid, "sha256": row["sha256"], "source_path": str(wav),
+            "source_kind": origin, "decision": decision,
+            "route": route, "reason": reason, "candidate_style": style,
+            "style_source": style_source, "text_source": text_source,
+            "text": content, "caption": caption,
+            "training_ready": str(route == "training_candidate").lower(),
+        })
+
+    # No mutation until every row and source file passes preflight.
+    write_csv(out / "auto_preparation_report.csv", DETAIL_COLUMNS, details)
+    write_csv(out / "ambiguous_vocal_review.csv", REVIEW_COLUMNS, ambiguous)
+    write_csv(out / "nonverbal_experiments.csv", EXPERIMENT_COLUMNS, experiments)
+    write_csv(out / "dataset_for_prepare_manifest_auto.csv",
+              ("audio", "text", "caption", "speaker"), ready)
+    report = {
+        "total": len(details), "routes": dict(summary),
+        "training_candidates": len(ready),
+        "asr_text_is_machine_generated": True,
+        "human_verified_only": False,
+        "nonverbal_experiment_is_training_ready": False,
+        "manual_action": "Only classify unclear vocal styles in ambiguous_vocal_review.csv",
+        "outputs": {
+            "training": str(out / "dataset_for_prepare_manifest_auto.csv"),
+            "vocal_exceptions": str(out / "ambiguous_vocal_review.csv"),
+            "nonverbal_experiments": str(out / "nonverbal_experiments.csv"),
+            "source_trace": str(out / "auto_preparation_report.csv"),
+        },
+    }
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return report
+
