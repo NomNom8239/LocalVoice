@@ -144,6 +144,54 @@ class StyleBaselineTests(unittest.TestCase):
             self.workspace / "inventory.csv"
         )[0]["sha256"])
 
+    def test_evaluation_separates_tentative_tag_from_verified_label(self):
+        style.run(self.test_args, classifier_factory=self.fake_classifier())
+        review_path = self.workspace / "review.csv"
+        original_review = review_path.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            style.evaluate_pilot(self.test_args)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["evaluation_counts"]["pending"], 1)
+        self.assertEqual(report["confirmed_comparable"], 0)
+        self.assertEqual(review_path.read_bytes(), original_review)
+
+        rows = data.read_csv(review_path)
+        rows[0].update({"style": "laugh", "decision": "tagged"})
+        data.write_csv(review_path, data.COLUMNS, rows)
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            style.evaluate_pilot(self.test_args)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["evaluation_counts"]["tentative_match"], 1)
+        self.assertEqual(report["confirmed_comparable"], 0)
+
+        rows = data.read_csv(review_path)
+        rows[0].update({
+            "style": "groan", "decision": "needs_text",
+            "speaker_ok": "yes", "quality": "good",
+        })
+        data.write_csv(review_path, data.COLUMNS, rows)
+        reviewed_bytes = review_path.read_bytes()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            style.evaluate_pilot(self.test_args)
+        report = json.loads(stdout.getvalue())
+        self.assertEqual(report["evaluation_counts"]["confirmed_mismatch"], 1)
+        self.assertEqual(report["confirmed_comparable"], 1)
+        self.assertEqual(report["confirmed_agreement"], "0/1")
+        self.assertEqual(review_path.read_bytes(), reviewed_bytes)
+        evaluation = data.read_csv(self.workspace / "style_pilot_evaluation.csv")
+        self.assertEqual(evaluation[0]["human_style"], "groan")
+        self.assertEqual(evaluation[0]["candidate_style"], "laugh")
+
+    def test_evaluation_rejects_changed_prediction_hash(self):
+        style.run(self.test_args, classifier_factory=self.fake_classifier())
+        path = self.workspace / "style_suggestions.csv"
+        result = data.read_csv(path)
+        result[0]["sha256"] = "incorrect"
+        data.write_csv(path, style.STYLE_COLUMNS, result)
+        with self.assertRaisesRegex(ValueError, "Unmatched or changed source"):
+            style.evaluate_pilot(self.test_args)
+        self.assertFalse((self.workspace / "style_pilot_evaluation.csv").exists())
+
     def test_manual_approved_item_not_classified(self):
         review_path = self.workspace / "review.csv"
         reviews = data.read_csv(review_path)
