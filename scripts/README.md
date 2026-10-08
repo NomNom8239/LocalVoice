@@ -166,3 +166,28 @@ Interpretation must be based on listening:
 
 Quality/voice similarity stays unvalidated until heard. Use the actual
 A/B outputs and their logs; do not infer success from exit code zero.
+
+
+#### LV-05 follow-up: duration-control diagnostic
+
+The first LV-05 comparison (lv05_voice_ab_001) returned all four WAVs,
+but the same Japanese prompt had significantly different model-selected
+durations (base single 4.20s, LoRA single 2.84s, base multi4 6.20s,
+LoRA multi4 3.00s). The official LoRA YAML uses lora_modules_to_save:
+auto, which includes the duration_predictor when active. The observed
+duration difference is consistent with changed duration prediction but
+does not alone prove overfitting or voice identity.
+
+To isolate timbre while keeping the four approved reference latents,
+run only the next *two* 4-second paired samples:
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv05_voice_ab.py --ref-mode multi4 --fixed-seconds 4 --run
+~~~
+
+The first comparison directory stays unchanged. The next free
+lv05_voice_ab_NNN receives multi4_base.wav and multi4_lora.wav with the
+same text, seed, references and duration, plus logs and result.json.
+This is diagnostic inference, not a replacement for the official full
+quality review or a request to retrain.
