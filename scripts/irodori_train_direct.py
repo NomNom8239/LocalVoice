@@ -381,7 +381,20 @@ def run(args: argparse.Namespace) -> int:
     print(f"[select] {len(candidates)} candidates; {len(curated)} clean WAVs", flush=True)
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
-    screened, embedding_info = speaker_screen(curated, root, minimum=MIN_SPEECH)
+    # Original my_voice/review_approved/review_emotion streams have already
+    # passed LocalVoice ingestion/diarization routing. Re-embedding every WAV
+    # by default is redundant, slow, and may require unavailable models.
+    # An explicit opt-in repeats heuristic speaker screening when desired.
+    if args.rescreen_speaker:
+        screened, embedding_info = speaker_screen(
+            curated, root, minimum=MIN_SPEECH)
+    else:
+        screened = curated
+        embedding_info = {
+            "performed": False,
+            "reason": "reused existing LocalVoice curated provenance",
+            "caveat": "Existing routing does not independently prove identity.",
+        }
     speech = evenly_sample(screened, args.max_speech)
     approved, bad_approved = verified_wave_quality(preserved, state["inventory"])
     if len(approved) != len(preserved):
@@ -461,15 +474,27 @@ def run(args: argparse.Namespace) -> int:
         command = build_command(
             python, upstream, config, training_manifest, checkpoint,
             folder / "adapter", args.steps, valid_ratio=0.05)
+        if args.nonverbal_repeat > 1:
+            # Official internal random split cannot group duplicate latent
+            # paths. Disable that misleading validation rather than leaking
+            # repeated nonverbal clips into both train and validation.
+            command[command.index("--valid-ratio") + 1] = "0.0"
+            command[command.index("--valid-every") + 1] = "0"
+            command[command.index("--checkpoint-best-n") + 1] = "0"
         # Critical LV-04 fix: a tiny corpus had updated the whole duration
         # predictor; keep it frozen in this multi-speaker/expressive baseline.
         command += ["--lora-modules-to-save", "none"]
         command[command.index("--save-every") + 1] = "100"
-        command[command.index("--valid-every") + 1] = "50"
+        if args.nonverbal_repeat == 1:
+            command[command.index("--valid-every") + 1] = "50"
         save_json(folder / "training_plan.json", {
             "command": command, "manifest_sha256": sha256(training_manifest),
             "checkpoint_sha256": sha256(checkpoint),
             "duration_predictor_trainable": False,
+            "internal_validation": (
+                "disabled_to_prevent_duplicate_latent_leakage"
+                if args.nonverbal_repeat > 1 else "random_5_percent"),
+            "independent_external_eval": "preserved unchanged; not treated as model quality pass",
         })
         print(f"[train] LoRA steps={args.steps} speaker candidates={len(normal)} "
               f"nonverbal unique={len(expressive)} repeat={args.nonverbal_repeat}",
@@ -504,6 +529,8 @@ def main() -> int:
     parser.add_argument("--max-speech", type=int, default=320)
     parser.add_argument("--nonverbal-repeat", type=int, default=4)
     parser.add_argument("--steps", type=int, default=600)
+    parser.add_argument("--rescreen-speaker", action="store_true",
+                        help="Optional repeat of speaker embedding checks; normally reuse existing provenance")
     parser.add_argument("--train-timeout", type=int, default=21600)
     args = parser.parse_args()
     if args.train_timeout < 1:
