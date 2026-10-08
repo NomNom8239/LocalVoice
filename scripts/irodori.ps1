@@ -13,6 +13,30 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+# Windows PowerShell can promote native stderr to an error under "Stop".
+# uv legitimately reports progress on stderr, so use Continue only while
+# executing native programs, and check their exit codes explicitly.
+function Invoke-NativeChecked {
+    param(
+        [Parameter(Mandatory = $true)][string]$Executable,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$FailureMessage
+    )
+    $previousPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $Executable @Arguments
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+    }
+    if ($exitCode -ne 0) {
+        throw "$FailureMessage (exit $exitCode)"
+    }
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $driver = Join-Path $PSScriptRoot "irodori_dataset.py"
 $python = Join-Path $root ".venv\Scripts\python.exe"
@@ -25,16 +49,21 @@ if ($Action -eq "asr") {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
             throw "uv is needed to bootstrap the isolated ASR environment."
         }
-        & uv venv $envDir --python 3.12
-        if ($LASTEXITCODE -ne 0) { throw "ASR environment creation failed" }
+        Invoke-NativeChecked "uv" @("venv", $envDir, "--python", "3.12") "ASR environment creation failed"
     }
-    & $python -c "import faster_whisper" *> $null
-    if ($LASTEXITCODE -ne 0) {
+    # Missing faster-whisper is expected in a newly created environment.
+    # find_spec checks availability without importing and writing traceback.
+    $probe = "import importlib.util; print('installed' if importlib.util.find_spec('faster_whisper') else 'missing')"
+    $packageState = & $python -c $probe
+    if ($LASTEXITCODE -ne 0) { throw "ASR dependency probe failed" }
+    if ($packageState -eq "missing") {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
             throw "uv is needed to install faster-whisper."
         }
-        & uv pip install --python $python faster-whisper
-        if ($LASTEXITCODE -ne 0) { throw "ASR dependency install failed" }
+        Invoke-NativeChecked "uv" @("pip", "install", "--python", $python, "faster-whisper") "ASR dependency install failed"
+    }
+    elseif ($packageState -ne "installed") {
+        throw "Unexpected ASR dependency probe result: $packageState"
     }
 }
 elseif (-not (Test-Path -LiteralPath $python)) {
@@ -51,7 +80,4 @@ if ($Action -eq "asr") {
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
-& $python @argsList
-if ($LASTEXITCODE -ne 0) {
-    throw "Irodori $Action failed (exit $LASTEXITCODE)"
-}
+Invoke-NativeChecked $python $argsList "Irodori $Action failed"
