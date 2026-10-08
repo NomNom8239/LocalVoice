@@ -152,7 +152,11 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
             route, reason = "training_candidate", "human_confirmed_style_with_automatic_caption"
         elif tentative:
             if st and state == "style_prediction_uncertain":
-                route, reason = "ambiguous_vocal_style", "style_evidence_conflict"
+                # The user already tagged this clip. An uncalibrated AST
+                # disagreement must neither erase their work nor demand a
+                # second listening pass, and tentative + conflicting
+                # evidence must not silently enter text-conditioned training.
+                route, reason = "deferred_unresolved_audio", "human_tentative_style_ast_conflict"
             else:
                 route, reason = "training_candidate", "human_tentative_style_with_asr_text"
         elif origin in {"my_voice", "review_approved"}:
