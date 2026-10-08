@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check", "nonverbal-manifest")]
+    [ValidateSet("scan", "status", "asr", "merge", "triage", "review", "classify", "evaluate", "export", "prepare", "resolve", "auto", "nonverbal-pilot", "nonverbal-check", "nonverbal-manifest", "nonverbal-lora")]
     [string]$Action,
 
     [Parameter(Mandatory = $true)]
@@ -22,6 +22,9 @@ param(
     [switch]$IncludeShort,
     [switch]$Replace,
     [int]$MaxPerStyle = 3,
+    [int]$Steps = 24,
+    [string]$CheckpointPath,
+    [switch]$Run,
     [string]$ConfigPath,
     [string]$FFmpegSharedBin,
     [string]$Workspace
@@ -184,6 +187,13 @@ if ($Action -eq "nonverbal-manifest") {
     if ($Device -eq "cpu") { $argsList += @("--device", "cpu") }
     if ($DryRun) { $argsList += "--dry-run" }
     if ($FFmpegSharedBin) { $argsList += @("--ffmpeg-shared-bin", $FFmpegSharedBin) }
+}
+if ($Action -eq "nonverbal-lora") {
+    $loraDriver = Join-Path $PSScriptRoot "irodori_nonverbal_lora.py"
+    $argsList = @($loraDriver, "--profile", $Speaker, "--steps", [string]$Steps)
+    if ($Workspace) { $argsList += @("--workspace", $Workspace) }
+    if ($CheckpointPath) { $argsList += @("--checkpoint", $CheckpointPath) }
+    if ($Run) { $argsList += "--run" }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
