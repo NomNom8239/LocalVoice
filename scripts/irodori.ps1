@@ -51,19 +51,25 @@ if ($Action -eq "asr") {
         }
         Invoke-NativeChecked -Executable "uv" -Arguments @("venv", $envDir, "--python", "3.12") -FailureMessage "ASR environment creation failed"
     }
-    # Missing faster-whisper is expected in a newly created environment.
-    # find_spec checks availability without importing and writing traceback.
-    $probe = "import importlib.util; print('installed' if importlib.util.find_spec('faster_whisper') else 'missing')"
+    # faster-whisper 1.2.1 calls av.open(metadata_errors=...), which
+    # PyAV 19 removed. Keep a tested compatible ASR pair, including repairs
+    # for pre-existing .venv-asr installations.
+    $probe = "import importlib.util as u, importlib.metadata as m; a=u.find_spec('av'); f=u.find_spec('faster_whisper'); print((m.version('faster-whisper') if f else 'missing') + '|' + (m.version('av') if a else 'missing'))"
     $packageState = & $python -c $probe
-    if ($LASTEXITCODE -ne 0) { throw "ASR dependency probe failed" }
-    if ($packageState -eq "missing") {
+    if ($LASTEXITCODE -ne 0) { throw "ASR dependency version probe failed" }
+    if ($packageState -ne "1.2.1|18.1.0") {
         if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-            throw "uv is needed to install faster-whisper."
+            throw "uv is needed to install compatible ASR dependencies."
         }
-        Invoke-NativeChecked -Executable "uv" -Arguments @("pip", "install", "--python", $python, "faster-whisper") -FailureMessage "ASR dependency install failed"
-    }
-    elseif ($packageState -ne "installed") {
-        throw "Unexpected ASR dependency probe result: $packageState"
+        Write-Host "Installing compatible ASR dependencies (faster-whisper 1.2.1 / PyAV 18.1.0)..."
+        Invoke-NativeChecked -Executable "uv" -Arguments @(
+            "pip", "install", "--python", $python,
+            "faster-whisper==1.2.1", "av==18.1.0"
+        ) -FailureMessage "ASR dependency compatibility repair failed"
+        $packageState = & $python -c $probe
+        if ($LASTEXITCODE -ne 0 -or $packageState -ne "1.2.1|18.1.0") {
+            throw "ASR dependencies remain incompatible: $packageState"
+        }
     }
 }
 elseif (-not (Test-Path -LiteralPath $python)) {
