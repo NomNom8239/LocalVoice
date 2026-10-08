@@ -127,13 +127,15 @@ def source_path(row: dict[str, str]) -> Path:
     return Path(name).resolve()
 
 
-def verify_sources(workspace: Path) -> tuple[Path, dict[str, str]]:
-    train_csv = workspace / "dataset_for_prepare_manifest_approved_train.csv"
+def verify_sources(workspace: Path, train_csv: Path | None = None) -> tuple[Path, dict[str, str]]:
+    train_csv = (train_csv or workspace / "dataset_for_prepare_manifest_approved_train.csv").resolve()
+    if workspace.resolve() not in train_csv.parents:
+        raise ValueError("Training CSV must be under the local verified workspace")
     train = rows(train_csv)
     eval_rows = rows(workspace / "lv02_approved_evaluation.csv")
     inventory = rows(workspace / "inventory.csv")
-    if (len(train), len(eval_rows), len(inventory)) != (8, 3, 1167):
-        raise ValueError("Expected train=8, evaluation=3, inventory=1167")
+    if len(train) < 2 or len(eval_rows) != 3 or len(inventory) != 1167:
+        raise ValueError("Need >=2 approved training, exactly 3 evaluation, and 1167 inventory")
     by_path = {str(Path(r["source_path"]).resolve()): r for r in inventory}
     if len(by_path) != len(inventory):
         raise ValueError("Duplicate inventory paths")
@@ -167,8 +169,8 @@ def verify_sources(workspace: Path) -> tuple[Path, dict[str, str]]:
     for key, partition in (("clip_id", ids), ("SHA-256", hashes), ("video", videos)):
         if partition["train"] & partition["eval"]:
             raise ValueError("Train/evaluation leakage: " + key)
-    if len(all_sources) != 11:
-        raise ValueError("Expected 11 distinct approved clip identities")
+    if len(all_sources) != len(train) + len(eval_rows):
+        raise ValueError("Train/evaluation approved clip identity mismatch")
     return train_csv, all_sources
 
 
@@ -263,6 +265,7 @@ def main() -> int:
     parser.add_argument("--ffmpeg-shared-bin", type=Path)
     parser.add_argument("--probe-timeout", type=int, default=300)
     parser.add_argument("--full-timeout", type=int, default=1200)
+    parser.add_argument("--train-csv", type=Path, help="Versioned LV-02 approved CSV (default: original 8)")
     parser.add_argument("--diagnose-only", action="store_true")
     args = parser.parse_args()
     if args.probe_timeout < 1 or args.full_timeout < 1:
@@ -275,8 +278,9 @@ def main() -> int:
               / "ffmpeg-7.0.2-full-shared" / "bin").resolve()
     if not py.is_file() or not upstream.is_file() or (os.name == "nt" and not shared.is_dir()):
         raise FileNotFoundError("Existing Irodori .venv/prepare_manifest/FFmpeg7 shared DLL missing")
-    train_csv, initial = verify_sources(workspace)
-    print("PASS: approved train8/eval3; identity, WAV SHA, source video disjoint", flush=True)
+    train_csv, initial = verify_sources(workspace, args.train_csv)
+    train_count = len(rows(train_csv))
+    print(f"PASS: approved train{train_count}/eval3; identity, WAV SHA, source video disjoint", flush=True)
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     env["HF_HUB_OFFLINE"] = "1"  # Reuse cached codec weights; never stall on a download.
@@ -287,21 +291,24 @@ def main() -> int:
     print("PASS: one-clip codec and official dataset read", flush=True)
     if args.diagnose_only:
         return 0
-    good, full = encode(root, workspace, train_csv, py, shared, env, 8, args.full_timeout)
+    good, full = encode(root, workspace, train_csv, py, shared, env,
+                        train_count, max(args.full_timeout, train_count * 180))
     if not good:
         print("LV-03 NOT DONE. Full attempt: " + str(full), flush=True)
         return 2
-    _, after = verify_sources(workspace)
+    _, after = verify_sources(workspace, train_csv)
     if initial != after:
         raise RuntimeError("Source WAVs changed during run")
     result = {"status": "PASS_LV03_DACVAE_AND_DATASET",
-              "train_rows": 8, "evaluation_rows": 3,
+              "train_rows": train_count, "evaluation_rows": 3,
+              "training_csv": str(train_csv),
+              "training_csv_sha256": digest(train_csv),
               "manifest": str(full / "train_manifest.jsonl"),
               "input_sha256_by_clip": initial, "training_started": False}
     report_path = full / "lv03_final_result.json"
     report_path.write_text(json.dumps(result, ensure_ascii=False, indent=2),
                            encoding="utf-8")
-    print("PASS: LV-03 manifest8 / verified latent8 / dataset reads8", flush=True)
+    print(f"PASS: LV-03 manifest{train_count} / verified latent{train_count} / dataset reads{train_count}", flush=True)
     print("Result: " + str(report_path), flush=True)
     return 0
 
