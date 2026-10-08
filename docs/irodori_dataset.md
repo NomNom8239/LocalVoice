@@ -164,8 +164,33 @@ recreating ASR/style predictions or editing the 1,041 speech examples.
 The runner requires a separate `Irodori-TTS/.venv`, configured using
 Irodori's own dependency lock and CUDA tooling. It deliberately does not
 install large model/toolchain dependencies into the LocalVoice `.venv`.
-If that environment does not exist or cannot import the required
-libraries, the command fails with an actionable error.
+
+**Windows TorchCodec DLL compatibility:** the pinned Irodori
+`torchcodec 0.10` requires `torch 2.10` and FFmpeg *shared* libraries
+from a supported major version (4–8). A working standalone `ffmpeg.exe`,
+especially version 9, does **not** supply these DLLs. If the first native
+probe fails specifically while importing TorchCodec, the runner first
+checks the installed Torch/TorchCodec versions. If they do not match the
+supported pair, it stops **without reinstalling CUDA or PyTorch**.
+If they match, it uses a project-local, pinned FFmpeg **7.0.2 full-shared**
+archive under `Irodori-TTS/.localvoice-toolchain/`, downloaded from
+Gyan.D's GitHub release and verified against WinGet's SHA-256
+before extraction. This changes *only the Irodori child process* DLL
+search path via `os.add_dll_directory` and never alters global PATH,
+system FFmpeg, or the other Python venvs. The archive is reused
+on subsequent runs; a corrupt/partial existing installation fails closed.
+The first `-DryRun` may download this one pinned portable runtime.
+
+For machines that already have a working FFmpeg 7 full-shared directory,
+override the automatic download explicitly:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-manifest -Speaker Ui_Shigure -DryRun -FFmpegSharedBin 'C:\ffmpeg-7.0.2-full_build-shared\bin'
+~~~
+
+Only a valid directory with the FFmpeg 7 shared DLLs is accepted.
+Any other native dependency failure is reported without silently
+changing the Irodori environment.
 
 Preflight only (verify inputs and Irodori environment, no encoding):
 
