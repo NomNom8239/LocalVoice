@@ -44,7 +44,9 @@ class LV02ExpansionTest(unittest.TestCase):
                 video = f"candidate_video_{(n % 3) + 1}"
             path = self.source / f"{video}__clip{n:04d}.wav"
             digest = hashlib.sha256(f"WAV clip {n}".encode()).hexdigest()
-            if n < 12:
+            # Materialize frozen train/eval WAVs AND all four review candidates.
+            # Export validates each approved candidate against on-disk SHA-256.
+            if n < 15:
                 path.write_bytes(f"WAV clip {n}".encode())
             inv.append({
                 "clip_id": f"clip{n:04d}", "source_path": str(path),
