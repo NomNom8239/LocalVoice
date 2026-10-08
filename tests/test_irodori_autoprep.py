@@ -80,29 +80,69 @@ class AutoPrepTests(unittest.TestCase):
         self.assertEqual(data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv"), [])
         self.assertEqual(len(data.read_csv(self.out / "nonverbal_experiments.csv")), 1)
 
-    def test_ambiguous_uses_only_style_prompt_then_auto_caption(self):
+    def test_low_ast_score_does_not_force_emotional_speech_review(self):
         rows = data.read_csv(self.out / "review.csv")
         rows[0]["source_kind"] = "review_emotion"
         data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
         self.put_asr()
-        self.put_style("normal")
-        result = auto.build(self.args, self.source, self.out)
-        self.assertEqual(result["routes"]["ambiguous_vocal_style"], 1)
-        self.assertEqual(result["training_candidates"], 0)
-        original_hash = data.digest(self.wav)
-        with patch("builtins.input", side_effect=["emotion"]) as prompted:
-            auto.resolve(self.args, self.source, self.out)
-        self.assertEqual(prompted.call_count, 1)
-        self.assertEqual(data.digest(self.wav), original_hash)
-        review = data.read_csv(self.out / "review.csv")[0]
-        self.assertEqual(review["decision"], "style_confirmed")
-        self.assertEqual(review["style"], "emotion")
-        self.assertEqual(review["text"], "")
+        self.put_style("normal", uncertainty="review_priority")
+        original = (self.out / "review.csv").read_bytes()
         result = auto.build(self.args, self.source, self.out)
         self.assertEqual(result["training_candidates"], 1)
-        output = data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv")[0]
-        self.assertEqual(output["text"], "こんにちは")
-        self.assertEqual(output["caption"], auto.CAPTIONS["emotion"])
+        self.assertEqual(result["manual_style_review_cases"], 0)
+        out = data.read_csv(self.out / "dataset_for_prepare_manifest_auto.csv")[0]
+        self.assertEqual(out["text"], "こんにちは")
+        self.assertEqual(out["caption"], auto.CAPTIONS["emotion"])
+        audit = data.read_csv(self.out / "auto_preparation_report.csv")[0]
+        self.assertEqual(audit["style_source"], "curated_emotion_source_default")
+        self.assertEqual((self.out / "review.csv").read_bytes(), original)
+
+    def test_low_ast_score_does_not_force_normal_speech_review(self):
+        rows = data.read_csv(self.out / "review.csv")
+        rows[0]["source_kind"] = "my_voice"
+        data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
+        self.put_asr()
+        self.put_style("groan", uncertainty="review_priority")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["training_candidates"], 1)
+        self.assertEqual(result["manual_style_review_cases"], 0)
+        audit = data.read_csv(self.out / "auto_preparation_report.csv")[0]
+        self.assertEqual(audit["candidate_style"], "normal")
+        self.assertEqual(audit["style_source"], "curated_source_normal_default")
+
+    def test_unknown_untranscribed_audio_is_deferred_not_manual(self):
+        self.put_asr(status="no_detected_text_review_audio", text="")
+        self.put_style(candidate="unknown", uncertainty="review_priority")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["routes"]["deferred_unresolved_audio"], 1)
+        self.assertEqual(result["manual_style_review_cases"], 0)
+        self.assertEqual(result["training_candidates"], 0)
+
+    def test_competing_nonverbal_events_offer_style_only_review(self):
+        rows = data.read_csv(self.out / "review.csv")
+        rows[0]["source_kind"] = "review_emotion"
+        data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
+        self.put_asr(status="no_detected_text_review_audio", text="")
+        self.put_style("groan", uncertainty="review_priority")
+        suggestions = self.out / "style_suggestions.csv"
+        suggestions_rows = data.read_csv(suggestions)
+        suggestions_rows[0]["reason"] = "competing_voice_styles"
+        from scripts import irodori_style
+        data.write_csv(suggestions, irodori_style.STYLE_COLUMNS, suggestions_rows)
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["manual_style_review_cases"], 1)
+        self.assertEqual(result["training_candidates"], 0)
+        with patch("builtins.input", side_effect=["groan"]) as prompted:
+            auto.resolve(self.args, self.source, self.out)
+        self.assertEqual(prompted.call_count, 1)
+        row = data.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["decision"], "style_confirmed")
+        self.assertEqual(row["text"], "")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["manual_style_review_cases"], 0)
+        self.assertEqual(result["routes"]["nonverbal_experiment"], 1)
+        self.assertEqual(result["training_candidates"], 0)
+        self.assertEqual(data.digest(self.wav), self.orig_hash)
 
     def test_clear_expressive_style_requires_no_human_prompt(self):
         reviews = data.read_csv(self.out / "review.csv")
