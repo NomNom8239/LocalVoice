@@ -61,10 +61,22 @@ class LV03NoCodexTests(unittest.TestCase):
         self.assertEqual(source.name, "dataset_for_prepare_manifest_approved_train.csv")
         self.assertEqual(len(all_ids), 11)
 
-    def test_train_eval_video_leakage_fails_closed(self) -> None:
-        original = self.evals[0]["audio"]
-        self.evals[0]["audio"] = original.replace("video_eval__", "video_train__")
-        # Use a real train audio to prevent inventing a missing file.
+    def test_train_eval_same_video_fails_closed(self) -> None:
+        old = Path(self.evals[0]["audio"])
+        renamed = old.with_name(old.name.replace("video_eval__", "video_train__"))
+        old.rename(renamed)
+        inventory_path = self.workspace / "inventory.csv"
+        inventory = runner.rows(inventory_path)
+        for row in inventory:
+            if row["source_path"] == str(old):
+                row["source_path"] = str(renamed)
+        write_rows(inventory_path, ["clip_id", "source_path", "sha256"], inventory)
+        self.evals[0]["audio"] = str(renamed)
+        self.write_approved()
+        with self.assertRaisesRegex(ValueError, "leakage: video"):
+            runner.verify_sources(self.workspace)
+
+    def test_duplicate_train_eval_clip_fails_closed(self) -> None:
         self.evals[0]["audio"] = self.trains[0]["audio"]
         self.evals[0]["sha256"] = self.trains[0]["sha256"]
         self.evals[0]["clip_id"] = self.trains[0]["clip_id"]
