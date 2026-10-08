@@ -10,7 +10,6 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
-from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import irodori_train_direct as direct
@@ -162,52 +161,67 @@ class DirectLoraTests(unittest.TestCase):
         self.assertEqual(valid, [])
         self.assertEqual(reasons["bad_wave"], 1)
 
-    def test_existing_tokenizer_checked_nonverbal_pilot_is_experimental(self):
-        import irodori_nonverbal_manifest
-
+    def test_existing_pilot_uses_live_audit_not_stale_jsonl(self):
         pilot = self.root / "nonverbal_pilot"
         pilot.mkdir()
-        (pilot / "hf_audio_dataset_hypothesis.jsonl").write_text("")
-        (pilot / "tokenizer_audit.csv").write_text("")
+        # This intentionally mismatched old JSONL used to veto an otherwise
+        # valid source and tokenizer pass in the previous pipeline.
+        (pilot / "hf_audio_dataset_hypothesis.jsonl").write_text(
+            '{"audio": "stale.wav", "text": "stale"}\\n', encoding="utf-8")
         audio = self.root / "voice_video__breath.wav"
         audio.write_bytes(b"synthetic fixture, not for DACVAE")
-        with (pilot / "audit.csv").open("w", encoding="utf-8", newline="") as fh:
+        inventory_sha = direct.sha256(audio)
+        with (pilot / "audit.csv").open("w", encoding="utf-8",
+                                        newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=[
-                "clip_id", "style", "style_source"])
+                "clip_id", "source_path", "sha256", "status", "style",
+                "style_source", "experimental_text", "caption"])
             writer.writeheader()
             writer.writerow({
-                "clip_id": "breath1", "style": "breath",
-                "style_source": "ast_experimental",
+                "clip_id": "breath1", "source_path": str(audio),
+                "sha256": inventory_sha, "status": "pilot_hypothesis",
+                "style": "breath", "style_source": "ast_experimental",
+                "experimental_text": "😮‍💨",
+                "caption": "息を吐く、吐息を伴う発声",
+            })
+        with (pilot / "tokenizer_audit.csv").open(
+                "w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(
+                fh, fieldnames=["clip_id", "status", "emoji", "style"])
+            writer.writeheader()
+            writer.writerow({
+                "clip_id": "breath1", "status": "pass",
+                "emoji": "😮‍💨", "style": "breath",
             })
         state = {
-            "inventory": {
-                "breath1": {
-                    "clip_id": "breath1", "source_path": str(audio),
-                    "sha256": "fixed-source-hash",
-                },
-            },
+            "inventory": {"breath1": {
+                "clip_id": "breath1", "source_path": str(audio),
+                "sha256": inventory_sha,
+            }},
             "auto": {"breath1": {"source_kind": "my_voice"}},
             "review": {"breath1": {"decision": "pending"}},
             "train_ids": set(), "eval_ids": set(), "eval_videos": set(),
         }
-        pilot_rows = [{
-            "audio": str(audio), "text": "😮‍💨",
-            "caption": "息を吐く、吐息を伴う発声",
-        }]
-        with patch.object(irodori_nonverbal_manifest, "validate_sources",
-                          return_value=pilot_rows):
-            rows = direct.nonverbal_rows(state, self.root, self.root)
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["kind"], "experimental_nonverbal_breath")
-            state["auto"]["breath1"]["source_kind"] = "unknown"
-            self.assertEqual(
-                direct.nonverbal_rows(state, self.root, self.root), []
-            )
-            state["auto"]["breath1"]["source_kind"] = "my_voice"
-            state["eval_videos"] = {"voice_video"}
-            self.assertEqual(
-                direct.nonverbal_rows(state, self.root, self.root), []
-            )
+        rows = direct.nonverbal_rows(state, self.root, self.root)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["kind"], "experimental_nonverbal_breath")
+        self.assertEqual(rows[0]["sha256"], inventory_sha)
+        state["auto"]["breath1"]["source_kind"] = "unknown"
+        self.assertEqual(direct.nonverbal_rows(state, self.root, self.root), [])
+        state["auto"]["breath1"]["source_kind"] = "my_voice"
+        state["eval_videos"] = {"voice_video"}
+        self.assertEqual(direct.nonverbal_rows(state, self.root, self.root), [])
+        state["eval_videos"] = set()
+        # Token mismatch still blocks; an old JSONL must not bypass it.
+        token_path = pilot / "tokenizer_audit.csv"
+        token_path.write_text(
+            "clip_id,status,emoji,style\\n"
+            "breath1,pass,🥵,breath\\n", encoding="utf-8")
+        self.assertEqual(direct.nonverbal_rows(state, self.root, self.root), [])
+        # Forged inventory hash must never produce selected training rows.
+        state["inventory"]["breath1"]["sha256"] = "tampered"
+        with self.assertRaisesRegex(ValueError, "Pilot source identity mismatch"):
+            direct.nonverbal_rows(state, self.root, self.root)
 
     def test_round_robin_balances_video_source(self):
         clips = [
