@@ -67,10 +67,6 @@ class LV05PairedVoiceTests(unittest.TestCase):
         self.assertNotIn("--lora-adapter", variants[0])
         self.assertIn("--lora-adapter", variants[1])
         self.assertEqual(
-            [t for t in variants[0] if t != "--lora-adapter"],
-            [t for t in variants[0] if t != "--lora-adapter"],
-        )
-        self.assertEqual(
             variants[0],
             variants[1][:len(variants[0])],
         )
