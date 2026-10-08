@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
-import sys
 from pathlib import Path
 
 # Scripts are imported through the same mechanism as direct CLI execution.
