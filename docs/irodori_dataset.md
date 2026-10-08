@@ -20,7 +20,7 @@ The input WAV directory is `data/training_audio/Toto_Kogara/audio/` and is never
 
 ### ASR environment
 
-The first `asr` invocation creates a separate `LocalVoice/.venv-asr` with `uv` and installs `faster-whisper`. Later runs reuse it. CPU/int8 is the default, preserving the existing RVC and Irodori CUDA environments. On a failure, `asr_suggestions.csv` retains `error_detail`, and processing stops after three consecutive errors. `-RetryErrors` retries only previously failed suggestions; try `-Limit 1` first.
+The first `asr` invocation creates a separate `LocalVoice/.venv-asr` with `uv`. It installs a compatible pair (`faster-whisper==1.2.1`, `av==18.1.0`) and **repairs an existing ASR environment** that has incompatible PyAV 19 installed. PyAV 19 removed `metadata_errors` from `av.open`, which faster-whisper 1.2.1 still uses. Later runs reuse this environment. CPU/int8 is the default, preserving the existing RVC and Irodori CUDA environments. On a failure, `asr_suggestions.csv` retains `error_detail`, and processing stops after three consecutive errors. `-RetryErrors` retries only previously failed suggestions; try `-Limit 1` first.
 
 ### Human review gate
 
