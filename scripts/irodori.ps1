@@ -23,6 +23,7 @@ param(
     [switch]$Replace,
     [int]$MaxPerStyle = 3,
     [string]$ConfigPath,
+    [string]$FFmpegSharedBin,
     [string]$Workspace
 )
 
@@ -182,6 +183,7 @@ if ($Action -eq "nonverbal-manifest") {
     if ($Workspace) { $argsList += @("--workspace", $Workspace) }
     if ($Device -eq "cpu") { $argsList += @("--device", "cpu") }
     if ($DryRun) { $argsList += "--dry-run" }
+    if ($FFmpegSharedBin) { $argsList += @("--ffmpeg-shared-bin", $FFmpegSharedBin) }
 }
 if ($Action -eq "export" -and $Replace) { $argsList += "--replace" }
 
