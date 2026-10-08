@@ -71,6 +71,41 @@ class LV05PairedVoiceTests(unittest.TestCase):
             variants[1][:len(variants[0])],
         )
 
+    def test_fixed_duration_applies_equally_to_base_and_lora(self):
+        upstream = self.root / "Irodori-TTS"
+        adapter = self.root / "adapter"
+        refs = [self.root / "latent0.pt", self.root / "latent1.pt",
+                self.root / "latent2.pt", self.root / "latent3.pt"]
+        if sys.platform == "win32":
+            (upstream / ".localvoice-toolchain" /
+             "ffmpeg-7.0.2-full-shared" / "bin").mkdir(parents=True)
+            (self.root / "scripts").mkdir()
+            (self.root / "scripts" / "irodori_codec_entry.py").write_text("pass")
+        base = ab.command(
+            Path("python"), self.root, upstream, Path("base.safetensors"),
+            None, refs, "おはようございます。", self.root / "base.wav",
+            seed=0, steps=40, seconds=4.0,
+        )
+        lora = ab.command(
+            Path("python"), self.root, upstream, Path("base.safetensors"),
+            adapter, refs, "おはようございます。", self.root / "lora.wav",
+            seed=0, steps=40, seconds=4.0,
+        )
+        for cmd in (base, lora):
+            self.assertEqual(cmd[cmd.index("--seconds") + 1], "4.0")
+            self.assertEqual(cmd[cmd.index("--seed") + 1], "0")
+            self.assertIn("--ref-latents", cmd)
+        self.assertNotIn("--lora-adapter", base)
+        self.assertIn("--lora-adapter", lora)
+
+    def test_reject_invalid_fixed_duration(self):
+        with self.assertRaisesRegex(ValueError, "duration"):
+            ab.command(
+                Path("python"), self.root, self.root, Path("model"),
+                None, [self.root / "x"], "hi", self.root / "out.wav",
+                seed=0, steps=40, seconds=0.5,
+            )
+
     def test_missing_lv04_success_evidence_is_rejected(self):
         attempt = self.root / ab.LV04_DIR
         attempt.mkdir()
