@@ -79,7 +79,8 @@ def fresh_attempt(workspace: Path, *, create: bool) -> Path:
 
 def command(python: Path, root: Path, upstream: Path, checkpoint: Path,
             adapter: Path | None, ref_latents: list[Path], text: str,
-            output_wav: Path, *, seed: int, steps: int) -> list[str]:
+            output_wav: Path, *, seed: int, steps: int,
+            seconds: float | None = None) -> list[str]:
     if not ref_latents or steps < 1:
         raise ValueError("Invalid A/B reference or sampling step count")
     if os.name == "nt":
@@ -109,21 +110,30 @@ def command(python: Path, root: Path, upstream: Path, checkpoint: Path,
         cmd += ["--ref-latents", *(str(p) for p in ref_latents)]
     if adapter is not None:
         cmd += ["--lora-adapter", str(adapter)]
-    # Deliberately do not force output --seconds to 3: let the
-    # official duration predictor select length for the prompt.
+    # Default: official duration prediction. Optional fixed seconds isolates
+    # voice/timbre from the LoRA-trained duration predictor.
+    if seconds is not None:
+        if not 1.0 <= seconds <= 20.0:
+            raise ValueError("Fixed duration must be within 1..20 seconds")
+        cmd += ["--seconds", str(seconds)]
     return cmd
 
 
 def evaluate(args: argparse.Namespace) -> int:
     if not args.text.strip() or not 1 <= args.steps <= 100:
         raise ValueError("Provide nonempty text and 1..100 sampling steps")
+    if args.fixed_seconds is not None and not 1.0 <= args.fixed_seconds <= 20.0:
+        raise ValueError("Fixed duration must be within 1..20 seconds")
     data = prepare(args)  # Rechecks LV-03 split, original WAV hashes, model SHA, upstream commit
     workspace = data["workspace"]
     adapter, adapter_info = verified_adapter(workspace, data["manifest"])
     ref_one, ref_four = latent_references(data["manifest"])
     target = fresh_attempt(workspace, create=args.run)
     jobs = []
-    for reference, latent_paths in (("single", [ref_one]), ("multi4", ref_four)):
+    references = (("single", [ref_one]), ("multi4", ref_four))
+    for reference, latent_paths in references:
+        if args.ref_mode not in ("both", reference):
+            continue
         for variant, selected_adapter in (("base", None), ("lora", adapter)):
             output = target / f"{reference}_{variant}.wav"
             jobs.append({
@@ -134,6 +144,7 @@ def evaluate(args: argparse.Namespace) -> int:
                     data["python"], data["root"], data["upstream"],
                     data["checkpoint"], selected_adapter, latent_paths,
                     args.text, output, seed=args.seed, steps=args.steps,
+                    seconds=args.fixed_seconds,
                 ),
                 "reference_latent_sha256": [hash_file(p) for p in latent_paths],
             })
@@ -144,7 +155,10 @@ def evaluate(args: argparse.Namespace) -> int:
         "text": args.text,
         "seed": args.seed,
         "sampling_steps": args.steps,
-        "duration_mode": "official_predicted",
+        "duration_mode": ("official_predicted" if args.fixed_seconds is None
+                          else "fixed_seconds"),
+        "fixed_seconds": args.fixed_seconds,
+        "reference_mode": args.ref_mode,
         "training_changed": False,
         "trained_approved_samples": 8,
         "independent_evaluation_samples_used_for_training": 0,
@@ -213,6 +227,11 @@ def main() -> int:
     parser.add_argument("--text", default=DEFAULT_TEXT)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--steps", type=int, default=40)
+    parser.add_argument("--fixed-seconds", type=float, default=None,
+                        help="Fix output duration in matched base/LoRA (1..20 s)")
+    parser.add_argument("--ref-mode", choices=("both", "single", "multi4"),
+                        default="both",
+                        help="Which reference condition(s) to generate")
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--run", action="store_true")
     args = parser.parse_args()
