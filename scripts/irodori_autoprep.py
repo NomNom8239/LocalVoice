@@ -123,3 +123,39 @@ def build(args: argparse.Namespace, source: Path, out: Path) -> dict[str, object
                 route, reason = "automatic_processing", "missing_style_inference"
             else:
                 route, reason = "ambiguous_vocal_style", "speech_vs_nonverbal_uncertain"
+        elif confirmed:
+            route, reason = "training_candidate", "human_confirmed_style_with_automatic_caption"
+        elif tentative:
+            if st and state == "style_prediction_uncertain":
+                route, reason = "ambiguous_vocal_style", "style_evidence_conflict"
+            else:
+                route, reason = "training_candidate", "human_tentative_style_with_asr_text"
+        elif origin in {"my_voice", "review_approved"}:
+            if st and (style != "normal" or state != "style_prediction_candidate"):
+                route, reason = "ambiguous_vocal_style", "speech_vs_audio_style_disagreement"
+            else:
+                style, style_source = "normal", "curated_source_normal_default"
+                caption = CAPTIONS["normal"]
+                route, reason = "training_candidate", "curated_source_with_asr"
+        elif origin == "review_emotion":
+            if not st:
+                route, reason = "automatic_processing", "missing_style_inference"
+            else:
+                route, reason = "ambiguous_vocal_style", "expressive_delivery_needs_identification"
+        else:
+            route, reason = "ambiguous_vocal_style", "unknown_source_style"
+
+        if route == "training_candidate":
+            if style not in CAPTIONS or not content:
+                route, reason = "ambiguous_vocal_style", "incomplete_candidate"
+            else:
+                ready.append({"audio": str(wav), "text": content,
+                              "caption": caption, "speaker": args.profile})
+        if route == "ambiguous_vocal_style":
+            ambiguous.append({
+                "clip_id": cid, "source_path": str(wav),
+                "duration_sec": row.get("duration_sec", ""),
+                "source_kind": origin, "asr_status": ar.get("asr_status", ""),
+                "candidate_style": style or "unknown",
+                "top_events": st.get("top_events_json", ""), "reason": reason,
+            })
