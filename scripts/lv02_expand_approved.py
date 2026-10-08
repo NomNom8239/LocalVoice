@@ -26,7 +26,8 @@ SPEAKER = "Ui_Shigure"
 EXPRESSIVE = {"whisper", "breath", "panting", "groan", "laugh", "emotion"}
 STYLES = EXPRESSIVE | {"normal", "other"}
 REVIEW_COLS = (
-    "clip_id", "sha256", "source_video", "suggested_text", "suggested_caption",
+    "clip_id", "sha256", "source_video", "source_path", "duration_sec",
+    "scan_flag", "suggested_text", "suggested_caption",
     "suggested_style", "source_kind", "text_source", "style_source",
     "action", "speaker_ok", "quality", "text_verified", "text",
     "caption", "style", "evidence",
@@ -212,9 +213,13 @@ def audit(ws: Path, queue_limit: int = 48) -> Path:
         if r["tier"] not in {"REVIEW_REQUIRED", "HUMAN_APPROVED_NOT_EXPORTED"}:
             continue
         auto = state["auto"][r["clip_id"]]
+        inv = state["inventory"][r["clip_id"]]
         review.append({
             "clip_id": r["clip_id"], "sha256": r["sha256"],
             "source_video": r["source_video"],
+            "source_path": inv["source_path"],
+            "duration_sec": inv.get("duration_sec", ""),
+            "scan_flag": inv.get("scan_flag", ""),
             "suggested_text": auto.get("text", ""),
             "suggested_caption": auto.get("caption", ""),
             "suggested_style": auto.get("candidate_style", ""),
