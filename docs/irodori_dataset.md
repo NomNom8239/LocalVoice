@@ -134,14 +134,31 @@ Controls: `a` = confirm speaker/quality/style; `t` = save only a
 tentative nonverbal style tag; `n` = reject; `r` = replay; `s` = skip;
 `q` = quit.
 
-**No transcript is required during listening review.** With `a`, press
-Enter at the verified transcription prompt to save `decision=needs_text`
-(speaker and style checked, *not yet eligible for LoRA export*). If you
-can verify spoken words, enter them to save `decision=approved`.
+**No transcript or delivery caption is mandatory during initial listening review.**
+With `a`, press Enter at the verified transcription prompt to save
+`decision=needs_text` (speaker and style checked, *not yet eligible for LoRA export*).
+If you enter verified text for a special style (for example `emotion`, `laugh`,
+`panting`) but leave the caption blank, a final speaker/quality `y`
+saves `decision=needs_caption`, including the human-entered transcript and
+style. This is **not** `approved` and is excluded from training export.
+If both the verified transcript and necessary delivery caption are present,
+the explicit confirmation can save `decision=approved`.
 For an ASR suggestion, `=` explicitly confirms the displayed suggestion;
 simply pressing Enter defers rather than silently adopting ASR output.
 Nonverbal laughter, breathing or groaning remains `t` tagged; never invent
 speech to satisfy training.
+
+Later, complete the caption without retyping already verified speech:
+
+```powershell
+.\scripts\irodori.ps1 triage -Speaker Ui_Shigure
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind all -Group needs_caption -Limit 20
+```
+
+When prompted for the verified transcription, **Enter keeps the existing
+human-verified text**. Enter a truthful delivery caption (for example
+`興奮して大声で叫ぶように話している`), then confirm speaker/quality.
+The `needs_caption` stage never enters the learning export until completed.
 
 Later, re-run `triage` and use this to complete deferred transcripts:
 
