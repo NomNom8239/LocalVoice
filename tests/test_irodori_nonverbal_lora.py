@@ -29,7 +29,7 @@ class NonverbalLoRATests(unittest.TestCase):
                 w.setnchannels(1)
                 w.setsampwidth(2)
                 w.setframerate(16000)
-                w.writeframes(b"\x00\x00" * 16000)
+                w.writeframes((i + 1).to_bytes(2, "little", signed=True) * 16000)
         self.out = self.root / "stage"
         self.args = argparse.Namespace(
             profile="demo", workspace=str(self.out),
