@@ -272,7 +272,7 @@ def triage(args, source: Path, out: Path) -> None:
     output: list[dict[str, str | int]] = []
     counts: Counter[str] = Counter()
     for review in reviews:
-        if review.get("decision", "").strip().lower() != "pending":
+        if review.get("decision", "").strip().lower() not in {"pending", "tagged"}:
             continue
         suggestion = suggestions.get(review["clip_id"], {})
         if suggestion and suggestion.get("sha256") != review.get("sha256"):
@@ -281,7 +281,9 @@ def triage(args, source: Path, out: Path) -> None:
         text = review.get("asr_suggestion") or suggestion.get("asr_suggestion", "")
         text = text.strip()
         flag = review.get("scan_flag", "")
-        if flag in {"unreadable", "low_sample_rate"}:
+        if review.get("decision", "").strip().lower() == "tagged":
+            rank, group, why = (6, "tagged_nonverbal", "Tagged for later transcription/manifest review")
+        elif flag in {"unreadable", "low_sample_rate"}:
             rank, group, why = (0, "invalid_audio", "Inspect or reject corrupted/unsupported audio")
         elif flag == "short":
             rank, group, why = (1, "short_audio", "Listen: short clip, ASR not run")
@@ -354,7 +356,10 @@ def review(args, source: Path, out: Path) -> None:
         entry = reviews[index]
         if item.get("source_path") != entry.get("source_path"):
             raise ValueError(f"Stale triage path: {item['clip_id']}")
-        if entry.get("decision", "").strip().lower() != "pending":
+        decision = entry.get("decision", "").strip().lower()
+        if decision not in {"pending", "tagged"}:
+            continue
+        if decision == "tagged" and not args.include_tagged:
             continue
         origin = review_origin(entry)
         if args.kind == "emotion" and origin != "review_emotion":
@@ -413,6 +418,7 @@ def review(args, source: Path, out: Path) -> None:
                 if command == "t":
                     entry["style"] = style
                     entry["notes"] = input("Notes (optional): ").strip()
+                    entry["decision"] = "tagged"
                     print("Tagged for later review; not approved for training.")
                 else:
                     prompt = f"Verified transcription [{hint}]: " if hint else "Verified transcription: "
@@ -500,10 +506,11 @@ def main() -> int:
     p.add_argument("--kind", choices=("emotion", "other", "all"), default="emotion")
     p.add_argument("--group", choices=(
         "short_audio", "no_detected_text", "expressive_or_unclear",
-        "short_transcript", "ordinary_candidate", "invalid_audio"
+        "short_transcript", "ordinary_candidate", "invalid_audio", "tagged_nonverbal"
     ))
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--no-play", action="store_true")
+    p.add_argument("--include-tagged", action="store_true")
     p.add_argument("--player", default="ffplay")
     p = subs.add_parser("export")
     p.add_argument("--replace", action="store_true")
