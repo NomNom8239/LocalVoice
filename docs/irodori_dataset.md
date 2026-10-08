@@ -86,6 +86,49 @@ without implying a transcription or speaker verification.
 The legacy review command remains available for existing workflows, but
 its per-clip transcription/Caption path is no longer the default.
 
+## Nonverbal conditioning feasibility: isolated pilot (next phase)
+
+The official Irodori-v4.1-Small
+[EMOJI_ANNOTATIONS.md](https://huggingface.co/Aratako/Irodori-TTS-v4.1-Small/blob/main/EMOJI_ANNOTATIONS.md)
+documents `🤭` for chuckles, `😮‍💨` for breath/sigh,
+`🌬️` for heavy breathing, and `🥵` for panting/moans/groans.
+**This does not prove standalone emoji works as a LoRA training text.**
+
+Generate a **separate**, tiny, balanced experiment input from the existing
+nonverbal candidates. This command does no inference/training, reads no ASR,
+does not call ffplay, and never alters WAVs or human decisions:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-pilot -Speaker Ui_Shigure -MaxPerStyle 3
+~~~
+
+The outputs are:
+- `nonverbal_pilot/emoji_only_hypotheses.csv`: deliberately experimental
+  `audio,text,caption,speaker` rows using *one unverified emoji* per style.
+- `nonverbal_pilot/audit.csv`: all original candidate IDs and source hashes,
+  selection versus hold rationale and the official mapping reference.
+
+No unsupported generic emotion label is mapped to a specific emoji, because
+its exact vocal event cannot be inferred from source category alone.
+All original 15 nonverbal items remain present in the audit; at most three
+per supported style enter this **hypothesis-only** pilot.
+The `nonverbal_experiments.csv` source is unchanged.
+
+**Validation gates before actual training:**
+1. Check tokenizer acceptance and whether standalone emoji is preserved as a
+   meaningful text condition (not just a nonempty string).
+2. Check the upstream `prepare_manifest.py` DACVAE path with locally readable
+   audio; do not confuse this with LoRA success.
+3. Run a paired **tiny** LoRA feasibility experiment versus a speech-control
+   set, keeping normal speech performance and nonverbal quality separate.
+4. Only if the conditioning works, consider scaling to additional recordings.
+   Never mix all hypothesis rows into the 1,041 speech candidates by default.
+
+No manual transcription/caption writing or five-clip classification is needed
+for this stage. Actual CUDA model training and audible validation must run
+on the local PC. Treat the model's explicit-consent voice-use restrictions
+as prerequisites for any identifiable-person voice model training.
+
 ## Important nonverbal-training constraint
 
 Upstream Irodori prepare_manifest.py excludes empty text; captions are
