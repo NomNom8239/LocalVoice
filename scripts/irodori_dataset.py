@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+import shutil
 import sys
 import wave
 from collections import Counter
@@ -318,6 +319,126 @@ def triage(args, source: Path, out: Path) -> None:
     print("Edit only review.csv to approve/reject; triage.csv is regenerated.")
 
 
+def review_origin(row: dict[str, str]) -> str:
+    declared = (row.get("source_kind") or "").strip().lower()
+    if declared in {"my_voice", "review_emotion", "review_approved"}:
+        return declared
+    name = Path(row.get("source_path", "")).name.lower()
+    for kind in ("review_emotion", "review_approved", "my_voice"):
+        if f"__{kind}__" in name:
+            return kind
+    return "unknown"
+
+
+def review(args, source: Path, out: Path) -> None:
+    """Listen, verify and persist training decisions one clip at a time."""
+    review_path = out / "review.csv"
+    triage_path = out / "triage.csv"
+    if not triage_path.is_file():
+        raise FileNotFoundError(f"Run 'triage' first: {triage_path}")
+    if not args.no_play and shutil.which(args.player) is None:
+        raise RuntimeError(f"Audio player not found: {args.player}")
+    if args.limit < 1:
+        raise ValueError("--limit must be >= 1")
+
+    reviews = read_csv(review_path)
+    indices = {r["clip_id"]: index for index, r in enumerate(reviews)}
+    if len(indices) != len(reviews):
+        raise ValueError("Duplicate clip IDs in review.csv")
+    queue = read_csv(triage_path)
+    pending: list[tuple[int, dict[str, str]]] = []
+    for item in queue:
+        index = indices.get(item["clip_id"])
+        if index is None:
+            raise ValueError(f"Unknown clip in triage: {item['clip_id']}")
+        entry = reviews[index]
+        if item.get("source_path") != entry.get("source_path"):
+            raise ValueError(f"Stale triage path: {item['clip_id']}")
+        if entry.get("decision", "").strip().lower() != "pending":
+            continue
+        origin = review_origin(entry)
+        if args.kind == "emotion" and origin != "review_emotion":
+            continue
+        if args.kind == "other" and origin == "review_emotion":
+            continue
+        if args.group and item.get("review_group") != args.group:
+            continue
+        pending.append((index, item))
+    pending = pending[:args.limit]
+    if not pending:
+        print("No matching pending clips. Refresh triage if needed.")
+        return
+
+    # Preserve manually added review columns rather than dropping them.
+    columns = list(dict.fromkeys(
+        list(COLUMNS) + [key for row in reviews for key in row.keys()]
+    ))
+    done = 0
+    for number, (index, item) in enumerate(pending, start=1):
+        entry = reviews[index]
+        wav = Path(entry["source_path"]).resolve()
+        if source not in wav.parents or not wav.is_file() or digest(wav) != entry["sha256"]:
+            raise ValueError(f"WAV missing/changed/outside input directory: {wav}")
+        origin = review_origin(entry)
+        print("\n" + "-" * 72)
+        print(f"[{number}/{len(pending)}] {item['review_group']} | {origin} | {item['duration_sec']}s")
+        print(wav)
+        hint = (entry.get("asr_suggestion") or item.get("asr_suggestion") or "").strip()
+        print(f"ASR hint: {hint or '(none)'}")
+        while True:
+            if not args.no_play:
+                subprocess.run([args.player, "-nodisp", "-autoexit", "-loglevel",
+                                "error", str(wav)], check=False)
+            command = input("[a] approve / [t] tag-only / [n] reject / [r] replay / [s] skip / [q] quit > ").strip().lower()
+            if command == "q":
+                print(f"Stopped; {done} changes saved.")
+                return
+            if command == "s":
+                break
+            if command == "r":
+                continue
+            if command not in {"a", "t", "n"}:
+                print("Unknown command")
+                continue
+
+            if command == "n":
+                entry["decision"] = "rejected"
+                entry["notes"] = input("Reason (optional): ").strip()
+            else:
+                options = ", ".join(sorted(VALID_STYLES))
+                style = input(f"Style ({options}): ").strip().lower()
+                if style not in VALID_STYLES:
+                    print("Unrecognized style; no changes saved for this clip.")
+                    continue
+                if command == "t":
+                    entry["style"] = style
+                    entry["notes"] = input("Notes (optional): ").strip()
+                    print("Tagged for later review; not approved for training.")
+                else:
+                    prompt = f"Verified transcription [{hint}]: " if hint else "Verified transcription: "
+                    verified = input(prompt).strip() or hint
+                    if not verified:
+                        print("Missing verified text. Use [t] tag-only for nonverbal clips.")
+                        continue
+                    caption = input("Verified caption (required for special styles; Enter for normal): ").strip()
+                    if style in SPECIAL_STYLES and not caption:
+                        print("Caption is required for special delivery; no approval saved.")
+                        continue
+                    if input("Confirm speaker and quality good? [y/N]: ").strip().lower() != "y":
+                        print("Not approved; review stays pending.")
+                        continue
+                    entry.update({
+                        "text": verified, "caption": caption, "style": style,
+                        "speaker_ok": "yes", "quality": "good", "decision": "approved",
+                    })
+            write_csv(review_path, columns, reviews)
+            done += 1
+            print(f"Saved: {entry['decision']} / {entry.get('style', '')} ({done} in this session)")
+            break
+    print(f"Review session complete: {done} changes saved.")
+    print("Run 'triage' again to refresh the pending listening queue.")
+
+
 def export(args, source: Path, out: Path) -> None:
     rows = read_csv(out / "review.csv")
     inv = {r["clip_id"]: r for r in read_csv(out / "inventory.csv")}
@@ -375,13 +496,22 @@ def main() -> int:
     p.add_argument("--device", default="cpu", choices=("cpu", "cuda"))
     p.add_argument("--compute-type", default="int8")
     p.add_argument("--retry-errors", action="store_true")
+    p = subs.add_parser("review")
+    p.add_argument("--kind", choices=("emotion", "other", "all"), default="emotion")
+    p.add_argument("--group", choices=(
+        "short_audio", "no_detected_text", "expressive_or_unclear",
+        "short_transcript", "ordinary_candidate", "invalid_audio"
+    ))
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--no-play", action="store_true")
+    p.add_argument("--player", default="ffplay")
     p = subs.add_parser("export")
     p.add_argument("--replace", action="store_true")
     args = parser.parse_args()
     try:
         source, out = paths(args)
         actions = {"scan": scan, "asr": asr, "merge": merge,
-                   "status": status, "triage": triage, "export": export}
+                   "status": status, "triage": triage, "review": review, "export": export}
         actions[args.action](args, source, out)
         return 0
     except (ValueError, FileNotFoundError, FileExistsError, RuntimeError, OSError) as exc:
