@@ -1,0 +1,297 @@
+"""Generate paired base-vs-LoRA nonverbal comparisons without manual labeling.
+
+Five prompts: held-out groan/breath conditions both with and without style
+captions, plus a normal Japanese speech-retention check. Identical seed,
+speaker reference, text, duration and sampler for base and LoRA.
+
+WAV existence and metadata are checks; no audio-quality verdict is inferred.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import csv
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import wave
+
+if __package__:
+    from .irodori_dataset import ROOT, digest, paths, read_csv
+    from .irodori_nonverbal_lora import load_jsonl, checkpoint_path
+    from .irodori_nonverbal_manifest import environment
+else:
+    from irodori_dataset import ROOT, digest, paths, read_csv
+    from irodori_nonverbal_lora import load_jsonl, checkpoint_path
+    from irodori_nonverbal_manifest import environment
+
+
+def validate_adapter(attempt: Path) -> tuple[Path, list[dict], list[dict], dict]:
+    result = attempt / "result.json"
+    if not result.is_file():
+        raise FileNotFoundError(f"Completed LoRA result not found: {result}")
+    info = json.loads(result.read_text(encoding="utf-8"))
+    if info.get("status") != "TRAIN_COMMAND_EXITED_ZERO_NOT_QUALITY_VALIDATED":
+        raise ValueError("LoRA training did not report successful command completion")
+    adapter = attempt / "adapter" / "checkpoint_final"
+    if (not (adapter / "adapter_config.json").is_file() or
+            not any((adapter / name).is_file()
+                    for name in ("adapter_model.safetensors", "adapter_model.bin"))):
+        raise FileNotFoundError(
+            f"Irodori PEFT adapter checkpoint is missing/incomplete: {adapter}"
+        )
+    train = load_jsonl(attempt / "train.jsonl")
+    holdout = load_jsonl(attempt / "holdout.jsonl")
+    if (len(train) != 4 or len(holdout) != 2
+            or sorted(Counter(r.get("text") for r in train).values()) != [2, 2]
+            or sorted(Counter(r.get("text") for r in holdout).values()) != [1, 1]
+            or set(r["text"] for r in holdout) != set(r["text"] for r in train)):
+        raise ValueError("LoRA train and holdout stratification differs from experiment")
+    trained_latents = {Path(r["latent_path"]).resolve() for r in train}
+    holdout_latents = {Path(r["latent_path"]).resolve() for r in holdout}
+    if (trained_latents & holdout_latents or len(trained_latents) != 4
+            or len(holdout_latents) != 2
+            or any(not p.is_file() for p in trained_latents | holdout_latents)):
+        raise ValueError("LoRA train/holdout latent overlap or missing latent")
+    return adapter, train, holdout, info
+
+
+def choose_speech_reference(source: Path, out: Path,
+                            excluded: set[str]) -> tuple[Path, str]:
+    """Select a curated, separate speech clip from the existing 1,041 candidates."""
+    candidate_path = out / "dataset_for_prepare_manifest_auto.csv"
+    if not candidate_path.is_file():
+        raise FileNotFoundError("Existing curated speech-candidate manifest is missing")
+    eligible = {row["audio"] for row in read_csv(candidate_path)
+                if row.get("audio") and len(row.get("text", "").strip()) >= 8}
+    inventory = read_csv(out / "inventory.csv")
+    ranked = []
+    for row in inventory:
+        src = row.get("source_path", "")
+        if (src not in eligible or src in excluded
+                or row.get("source_kind") not in
+                {"my_voice", "review_approved", "review_emotion"}):
+            continue
+        try:
+            duration = float(row["duration_sec"])
+            rate = int(row["sample_rate"])
+        except (ValueError, KeyError, TypeError):
+            continue
+        if (not 3.0 <= duration <= 16.0 or rate < 16000
+                or row.get("scan_flag") != "ok"):
+            continue
+        ranked.append((abs(duration - 8), row["clip_id"], row))
+    for _, _, row in sorted(ranked, key=lambda x: x[:2]):
+        ref = Path(row["source_path"]).resolve()
+        if (source in ref.parents and ref.is_file()
+                and digest(ref) == row["sha256"]):
+            return ref, row["sha256"]
+    raise ValueError(
+        "No separately curated speech reference with a verified hash "
+        "was found; do not reuse held-out nonverbal audio as speaker reference."
+    )
+
+
+def prompts(holdout: list[dict]) -> list[dict]:
+    output = []
+    for row in sorted(holdout, key=lambda r: r["text"]):
+        label = {"😮‍💨": "breath", "🥵": "groan"}.get(row["text"])
+        if label is None:
+            raise ValueError("Unexpected nonverbal conditioning cue")
+        if not row.get("caption") or not isinstance(row["caption"], str):
+            raise ValueError("Missing automated holdout caption")
+        output.extend([
+            {"id": f"{label}_caption", "text": row["text"],
+             "caption": row["caption"], "seconds": 3.0, "seed": 20261008},
+            {"id": f"{label}_emoji_only", "text": row["text"],
+             "caption": None, "seconds": 3.0, "seed": 20261008},
+        ])
+    output.append({
+        "id": "normal_speech", "text": "こんにちは。今日はいい天気ですね。",
+        "caption": None, "seconds": 3.5, "seed": 20261008,
+    })
+    if len(output) != 5:
+        raise ValueError("Unexpected paired inference case count")
+    return output
+
+
+def inference_command(python: Path, upstream: Path, checkpoint: Path,
+                      adapter: Path | None, ref: Path, case: dict,
+                      output: Path, shared: Path | None) -> list[str]:
+    infer_script = upstream / "infer.py"
+    if not infer_script.is_file():
+        raise FileNotFoundError(f"Irodori inference CLI missing: {infer_script}")
+    args = [
+        "--checkpoint", str(checkpoint),
+        "--text", case["text"], "--output-wav", str(output),
+        "--ref-wav", str(ref),
+        "--ref-normalize-db", "none",
+        "--model-device", "cuda", "--codec-device", "cuda",
+        "--model-precision", "bf16", "--codec-precision", "fp32",
+        "--num-steps", "8", "--t-schedule-mode", "sway",
+        "--seconds", str(case["seconds"]), "--seed", str(case["seed"]),
+        "--num-candidates", "1", "--decode-mode", "sequential",
+    ]
+    if case["caption"] is not None:
+        args.extend(["--caption", case["caption"]])
+    if adapter is not None:
+        args.extend(["--lora-adapter", str(adapter)])
+    if shared is not None:
+        entry = Path(__file__).with_name("irodori_codec_entry.py").resolve()
+        if not entry.is_file():
+            raise FileNotFoundError(f"Windows FFmpeg entrypoint missing: {entry}")
+        return [str(python), str(entry), str(shared), str(infer_script), *args]
+    return [str(python), str(infer_script), *args]
+
+
+def inspect_wav(path: Path) -> dict:
+    if not path.is_file() or path.stat().st_size <= 44:
+        raise RuntimeError(f"Inference output WAV absent or empty: {path}")
+    try:
+        with wave.open(str(path), "rb") as handle:
+            rate = handle.getframerate()
+            frames = handle.getnframes()
+            chans = handle.getnchannels()
+    except (OSError, EOFError, wave.Error) as exc:
+        raise RuntimeError(f"Invalid inference WAV: {path}") from exc
+    if rate <= 0 or frames <= 0 or chans <= 0:
+        raise RuntimeError(f"Invalid empty audio output: {path}")
+    return {"duration_sec": round(frames / rate, 3),
+            "sample_rate": rate, "channels": chans,
+            "bytes": path.stat().st_size}
+
+
+def fresh_compare(attempt: Path) -> Path:
+    for i in range(1, 100):
+        out = attempt / f"comparison_{i:03d}"
+        if not out.exists():
+            return out
+    raise RuntimeError("No unused inference comparison directory")
+
+
+def compare(args: argparse.Namespace, source: Path, out: Path, *,
+            root: Path = ROOT, runner=subprocess.run,
+            windows: bool | None = None) -> dict:
+    upstream, python = environment(root)
+    attempt = (out / "nonverbal_pilot" / args.lora_attempt).resolve()
+    pilot_root = (out / "nonverbal_pilot").resolve()
+    if attempt.parent != pilot_root or not attempt.is_dir():
+        raise ValueError("LoRA attempt must be an existing isolated pilot directory")
+    adapter, train, holdout, prior = validate_adapter(attempt)
+    checkpoint = Path(prior.get("checkpoint", "")).resolve()
+    if not checkpoint.is_file():
+        raise FileNotFoundError(f"Original Irodori base checkpoint missing: {checkpoint}")
+    reference, reference_sha = choose_speech_reference(
+        source, out, {r["audio"] for r in load_jsonl(
+            out / "nonverbal_pilot/hf_audio_dataset_hypothesis.jsonl")}
+    )
+    codec = out / "nonverbal_pilot" / args.codec_attempt
+    meta = json.loads((codec / "result.json").read_text(encoding="utf-8"))
+    if meta.get("status") != "PASS_DACVAE_MANIFEST_ONLY":
+        raise ValueError("Source DACVAE experiment is not valid")
+    shared = None
+    if (os.name == "nt" if windows is None else windows):
+        raw = meta.get("ffmpeg_shared_bin")
+        if not raw or raw == "existing_environment":
+            # Existing environment may not require a bundled FFmpeg directory.
+            pass
+        else:
+            shared = Path(raw).resolve()
+            if not shared.is_dir():
+                raise FileNotFoundError(f"Project-local FFmpeg shared DLL directory missing: {shared}")
+    cases = prompts(holdout)
+    target = fresh_compare(attempt)
+    jobs = []
+    for case in cases:
+        for variant in ("base", "lora"):
+            wav = target / f"{case['id']}_{variant}.wav"
+            cmd = inference_command(
+                python, upstream, checkpoint,
+                adapter if variant == "lora" else None,
+                reference, case, wav, shared,
+            )
+            jobs.append({"case": case, "variant": variant,
+                         "wav": wav, "cmd": cmd})
+    result = {
+        "status": "PLAN_ONLY" if not args.run else "RUNNING",
+        "lora_attempt": str(attempt),
+        "adapter": str(adapter), "base_checkpoint": str(checkpoint),
+        "speech_reference": str(reference),
+        "speech_reference_sha256": reference_sha,
+        "heldout_clips": 2, "paired_prompts": len(cases),
+        "expected_wavs": len(jobs),
+        "output_dir": str(target),
+        "manual_classification_required": False,
+        "quality_assessed": False,
+        "note": "Paired inference verifies behavior only; no claim of acoustic improvement.",
+    }
+    if not args.run:
+        result["planned_files"] = [str(x["wav"]) for x in jobs]
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        return result
+
+    target.mkdir(parents=True, exist_ok=False)
+    results = []
+    try:
+        for job in jobs:
+            process = runner(job["cmd"], cwd=str(upstream), text=True,
+                             capture_output=True, check=False)
+            log = target / (job["wav"].stem + ".log")
+            log.write_text(
+                (process.stdout or "") + "\n" + (process.stderr or ""),
+                encoding="utf-8",
+            )
+            if process.returncode:
+                raise RuntimeError(
+                    f"Irodori inference failed for {job['wav'].name}, "
+                    f"exit={process.returncode}. See {log}"
+                )
+            audio_info = inspect_wav(job["wav"])
+            results.append({
+                "case": job["case"]["id"], "variant": job["variant"],
+                "text": job["case"]["text"],
+                "caption": job["case"]["caption"],
+                "seed": job["case"]["seed"],
+                "seconds": job["case"]["seconds"],
+                "wav": str(job["wav"]),
+                **audio_info,
+            })
+        result["status"] = "PAIRED_WAVS_READY_NOT_QUALITY_VALIDATED"
+        result["completed_wavs"] = len(results)
+    except Exception as exc:
+        result["status"] = "BLOCK"
+        result["error"] = str(exc)
+        result["completed_wavs"] = len(results)
+        raise
+    finally:
+        result["wav_metadata"] = results
+        (target / "result.json").write_text(
+            json.dumps(result, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", required=True)
+    parser.add_argument("--workspace")
+    parser.add_argument("--lora-attempt", default="lora_attempt_001")
+    parser.add_argument("--codec-attempt", default="codec_attempt_001")
+    parser.add_argument("--run", action="store_true",
+                        help="Explicitly generate ten paired WAVs on GPU")
+    args = parser.parse_args()
+    try:
+        source, out = paths(args)
+        compare(args, source, out)
+        return 0
+    except (ValueError, RuntimeError, OSError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
