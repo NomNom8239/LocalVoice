@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+import hashlib
 import json
 from pathlib import Path
 import shutil
@@ -44,6 +45,83 @@ def group_holdout(rows: list[dict]) -> tuple[list[dict], list[dict]]:
         train.extend(groups[cue][0:2])
         holdout.extend(groups[cue][2:])
     return train, holdout
+
+
+# Source of truth: HF Aratako/Irodori-TTS-v4.1-Small/model.safetensors.
+# The public unquantized file is 3.06 GB and the Xet SHA256 is documented
+# on the official Hugging Face file page.
+CHECKPOINT_REPO = "Aratako/Irodori-TTS-v4.1-Small"
+CHECKPOINT_NAME = "model.safetensors"
+CHECKPOINT_SHA256 = "c85de88c01700cb53538e706f128ebcb1b8513ad21d7d0e75f58bc82cdbf89f6"
+
+
+def file_hash(path: Path) -> str:
+    hash_obj = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024 * 4), b""):
+            hash_obj.update(block)
+    return hash_obj.hexdigest()
+
+
+def checkpoint_path(upstream: Path, given: str | None, *,
+                    fetch: bool = False) -> tuple[Path, str]:
+    """Resolve user path, local existing file, HF cache, or explicit download.
+
+    Never downloads a 3 GB file unless --fetch-checkpoint was requested.
+    The official download is SHA-256 checked and reused from the HF cache.
+    """
+    if given:
+        selected = Path(given).expanduser().resolve()
+        return selected, "user_selected"
+    local = (upstream / CHECKPOINT_NAME).resolve()
+    if local.is_file():
+        return local, "upstream_existing"
+    try:
+        from huggingface_hub import hf_hub_download, try_to_load_from_cache
+    except ImportError:
+        if fetch:
+            raise RuntimeError(
+                "huggingface_hub is missing in LocalVoice .venv; "
+                "install it there to fetch the official model"
+            )
+        return local, "missing"
+    cached = try_to_load_from_cache(CHECKPOINT_REPO, CHECKPOINT_NAME)
+    if isinstance(cached, str) and Path(cached).is_file():
+        return Path(cached).resolve(), "hf_cache"
+    if not fetch:
+        return local, "missing"
+    obtained = Path(hf_hub_download(
+        repo_id=CHECKPOINT_REPO,
+        filename=CHECKPOINT_NAME,
+        revision="main",
+    )).resolve()
+    observed = file_hash(obtained)
+    if observed != CHECKPOINT_SHA256:
+        raise RuntimeError(
+            "Downloaded Irodori model SHA-256 mismatch; training blocked. "
+            f"Expected {CHECKPOINT_SHA256}, observed {observed}."
+        )
+    return obtained, "official_hf_sha256_verified"
+
+
+def materialize_paths(items: list[dict], manifest_path: Path,
+                      latent_dir: Path) -> list[dict]:
+    """Rebase the codec's relative latent paths before moving the JSONL.
+
+    Irodori resolves latent_path relative to the *manifest location*.
+    The new train/holdout manifests live in lora_attempt_NNN, not
+    codec_attempt_NNN, so unchanged relative paths are invalid.
+    """
+    changed = []
+    for row in items:
+        raw = Path(row["latent_path"]).expanduser()
+        absolute = (raw if raw.is_absolute()
+                    else manifest_path.parent / raw).resolve()
+        if (not absolute.is_file()
+                or latent_dir not in absolute.parents):
+            raise ValueError(f"Latent not found in verified codec directory: {absolute}")
+        changed.append({**row, "latent_path": str(absolute)})
+    return changed
 
 
 def fresh_attempt(pilot: Path) -> Path:
@@ -101,6 +179,10 @@ def plan(args: argparse.Namespace, source: Path, out: Path, *,
     if [x["text"] for x in manifest] != [x["text"] for x in validated]:
         raise ValueError("Latent manifest text differs from source pilot")
     train, holdout = group_holdout(manifest)
+    # Keep source/codec manifests immutable and point the split manifests
+    # at the already verified latents (no duplicate encoding or files).
+    train = materialize_paths(train, manifest_path, latent_dir)
+    holdout = materialize_paths(holdout, manifest_path, latent_dir)
     upstream, python = environment(root)
     train_py = upstream / "train.py"
     config = upstream / "configs" / "train_v4_small_lora.yaml"
@@ -110,15 +192,17 @@ def plan(args: argparse.Namespace, source: Path, out: Path, *,
     if ("lora_enabled: true" not in config_text
             or "text_tokenizer_repo: sbintuitions/modernbert-ja-310m" not in config_text):
         raise ValueError("Unexpected Irodori LoRA model configuration")
-    checkpoint = (
-        Path(args.checkpoint).expanduser().resolve()
-        if args.checkpoint else (upstream / "model.safetensors").resolve()
+    if args.run and args.fetch_checkpoint:
+        raise ValueError("Fetching a large checkpoint and training require separate commands")
+    checkpoint, checkpoint_source = checkpoint_path(
+        upstream, args.checkpoint, fetch=args.fetch_checkpoint
     )
     checkpoint_exists = checkpoint.is_file()
     if args.run and not checkpoint_exists:
         raise FileNotFoundError(
             f"Full-precision v4.1-Small checkpoint not found: {checkpoint}. "
-            "Supply --checkpoint pointing at an unquantized model.safetensors."
+            "Run with -FetchCheckpoint to download the official 3.06 GB "
+            "checkpoint into the HF cache without training."
         )
     attempt = fresh_attempt(pilot)
     train_manifest = attempt / "train.jsonl"
@@ -131,6 +215,7 @@ def plan(args: argparse.Namespace, source: Path, out: Path, *,
         "by_style_train": sorted([x["text"] for x in train]),
         "by_style_holdout": sorted([x["text"] for x in holdout]),
         "checkpoint": str(checkpoint), "checkpoint_exists": checkpoint_exists,
+        "checkpoint_source": checkpoint_source,
         "max_steps": args.steps, "output": str(attempt),
         "lora_training": "NOT_RUN" if not args.run else "STARTED",
         "important": "Tiny feasibility run only; no generalization or voice-quality claim.",
@@ -170,6 +255,8 @@ def main() -> int:
     parser.add_argument("--codec-attempt", default="codec_attempt_001")
     parser.add_argument("--checkpoint", help="Unquantized Irodori v4.1-Small model.safetensors")
     parser.add_argument("--steps", type=int, default=24)
+    parser.add_argument("--fetch-checkpoint", action="store_true",
+                        help="Explicitly download and SHA-verify 3.06GB official base model; no training")
     parser.add_argument("--run", action="store_true",
                         help="Explicit opt-in: actually train; otherwise PLAN_ONLY")
     args = parser.parse_args()
