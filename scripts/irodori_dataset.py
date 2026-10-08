@@ -10,6 +10,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import wave
@@ -255,6 +256,68 @@ def status(args, source: Path, out: Path) -> None:
         print(f"Old ASR failures without error details: {old_errors} (use -RetryErrors)")
 
 
+def triage(args, source: Path, out: Path) -> None:
+    """Write a prioritized, non-destructive listening queue.
+
+    Labels are heuristic review priorities, not verified speech-style labels.
+    All decisions and transcriptions stay in review.csv.
+    """
+    del args, source
+    reviews = read_csv(out / "review.csv")
+    suggestion_path = out / "asr_suggestions.csv"
+    suggestions = {
+        r["clip_id"]: r for r in read_csv(suggestion_path)
+    } if suggestion_path.is_file() else {}
+    output: list[dict[str, str | int]] = []
+    counts: Counter[str] = Counter()
+    for review in reviews:
+        if review.get("decision", "").strip().lower() != "pending":
+            continue
+        suggestion = suggestions.get(review["clip_id"], {})
+        if suggestion and suggestion.get("sha256") != review.get("sha256"):
+            raise ValueError(f"ASR hash mismatch: {review['clip_id']}")
+        status = suggestion.get("asr_status") or review.get("asr_status", "")
+        text = review.get("asr_suggestion") or suggestion.get("asr_suggestion", "")
+        text = text.strip()
+        flag = review.get("scan_flag", "")
+        if flag in {"unreadable", "low_sample_rate"}:
+            rank, group, why = (0, "invalid_audio", "Inspect or reject corrupted/unsupported audio")
+        elif flag == "short":
+            rank, group, why = (1, "short_audio", "Listen: short clip, ASR not run")
+        elif status == "no_detected_text_review_audio":
+            rank, group, why = (2, "no_detected_text", "Listen: could be silence, noise or nonverbal voice")
+        elif len(text) < 5 or re.search(r"(.)\\1{3,}", text):
+            rank, group, why = (3, "expressive_or_unclear", "Listen: very short or repeated text; label manually")
+        elif len(text) < 10:
+            rank, group, why = (4, "short_transcript", "Check brief utterance and exact wording")
+        else:
+            rank, group, why = (5, "ordinary_candidate", "Verify wording, speaker and quality")
+        counts[group] += 1
+        output.append({
+            "review_priority": rank,
+            "review_group": group,
+            "reason": why,
+            "clip_id": review["clip_id"],
+            "source_path": review.get("source_path", ""),
+            "duration_sec": review.get("duration_sec", ""),
+            "scan_flag": flag,
+            "asr_status": status,
+            "asr_suggestion": text,
+            "decision": review.get("decision", ""),
+        })
+    output.sort(key=lambda r: (int(r["review_priority"]), str(r["clip_id"])))
+    target = out / "triage.csv"
+    write_csv(target,
+              ("review_priority", "review_group", "reason", "clip_id",
+               "source_path", "duration_sec", "scan_flag", "asr_status",
+               "asr_suggestion", "decision"),
+              output)
+    print(f"Created read-only review queue: {target}")
+    print(json.dumps({"pending": len(output), "groups": dict(counts)},
+                     ensure_ascii=False, indent=2))
+    print("Edit only review.csv to approve/reject; triage.csv is regenerated.")
+
+
 def export(args, source: Path, out: Path) -> None:
     rows = read_csv(out / "review.csv")
     inv = {r["clip_id"]: r for r in read_csv(out / "inventory.csv")}
@@ -304,7 +367,7 @@ def main() -> int:
     parser.add_argument("--profile", required=True)
     parser.add_argument("--workspace", help="Existing dataset workspace (optional)")
     subs = parser.add_subparsers(dest="action", required=True)
-    for command in ("scan", "status", "merge"):
+    for command in ("scan", "status", "merge", "triage"):
         subs.add_parser(command)
     p = subs.add_parser("asr")
     p.add_argument("--limit", type=int, default=30)
@@ -318,7 +381,7 @@ def main() -> int:
     try:
         source, out = paths(args)
         actions = {"scan": scan, "asr": asr, "merge": merge,
-                   "status": status, "export": export}
+                   "status": status, "triage": triage, "export": export}
         actions[args.action](args, source, out)
         return 0
     except (ValueError, FileNotFoundError, FileExistsError, RuntimeError, OSError) as exc:
