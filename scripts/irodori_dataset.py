@@ -386,6 +386,11 @@ def review(args, source: Path, out: Path) -> None:
     if len(indices) != len(reviews):
         raise ValueError("Duplicate clip IDs in review.csv")
     queue = read_csv(triage_path)
+    style_path = out / "style_suggestions.csv"
+    style_rows = read_csv(style_path) if style_path.is_file() else []
+    style_by_id = {r["clip_id"]: r for r in style_rows}
+    if len(style_rows) != len(style_by_id):
+        raise ValueError("Duplicate style suggestion IDs")
     pending: list[tuple[int, dict[str, str]]] = []
     for item in queue:
         index = indices.get(item["clip_id"])
@@ -394,6 +399,15 @@ def review(args, source: Path, out: Path) -> None:
         entry = reviews[index]
         if item.get("source_path") != entry.get("source_path"):
             raise ValueError(f"Stale triage path: {item['clip_id']}")
+        style_hint = style_by_id.get(item["clip_id"], {})
+        if style_hint and style_hint.get("sha256") != entry.get("sha256"):
+            raise ValueError(f"Stale style suggestion hash: {item['clip_id']}")
+        candidate_filter = getattr(args, "candidate", None)
+        if candidate_filter and not (
+            style_hint.get("status") == "suggested"
+            and style_hint.get("candidate_style") == candidate_filter
+        ):
+            continue
         decision = entry.get("decision", "").strip().lower()
         if decision not in {"pending", "tagged", "needs_text"}:
             continue
@@ -430,6 +444,24 @@ def review(args, source: Path, out: Path) -> None:
         print(wav)
         hint = (entry.get("asr_suggestion") or item.get("asr_suggestion") or "").strip()
         print(f"ASR hint: {hint or '(none)'}")
+        style_hint = style_by_id.get(item["clip_id"], {})
+        candidate = ""
+        if style_hint and style_hint.get("status") == "suggested":
+            candidate = style_hint.get("candidate_style", "")
+            print(
+                "Experimental AST voice-style suggestion (NOT a human decision): "
+                f"{candidate} | raw sigmoid={style_hint.get('candidate_score', '')} "
+                f"| {style_hint.get('uncertainty', '')} "
+                f"| {style_hint.get('reason', '')}"
+            )
+            try:
+                events = json.loads(style_hint.get("top_events_json", "") or "[]")
+                print("Top detected events: " + ", ".join(
+                    f"{event['label']}={event['score']}"
+                    for event in events[:4]
+                ))
+            except (ValueError, KeyError, TypeError):
+                print("Top event evidence unavailable")
         while True:
             if not args.no_play:
                 subprocess.run([args.player, "-nodisp", "-autoexit", "-loglevel",
@@ -451,7 +483,12 @@ def review(args, source: Path, out: Path) -> None:
                 entry["notes"] = input("Reason (optional): ").strip()
             else:
                 options = ", ".join(sorted(VALID_STYLES))
-                style = normalize_style(input(f"Style ({options}): "))
+                typed_style = input(f"Style ({options}) [= accept AST suggestion]: ")
+                style = (
+                    candidate if typed_style.strip() == "="
+                    and candidate in VALID_STYLES
+                    else normalize_style(typed_style)
+                )
                 if style not in VALID_STYLES:
                     print("Unrecognized style; no changes saved for this clip.")
                     continue
@@ -561,6 +598,9 @@ def main() -> int:
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--no-play", action="store_true")
     p.add_argument("--include-tagged", action="store_true")
+    p.add_argument("--candidate", choices=(
+        "normal", "whisper", "laugh", "breath", "panting", "groan", "unknown"
+    ))
     p.add_argument("--player", default="ffplay")
     p = subs.add_parser("export")
     p.add_argument("--replace", action="store_true")
