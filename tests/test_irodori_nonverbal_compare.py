@@ -229,7 +229,7 @@ class PairedInferenceTests(unittest.TestCase):
     def test_missing_speech_reference_is_not_replaced_by_holdout(self):
         target = self.out / "dataset_for_prepare_manifest_auto.csv"
         ds.write_csv(target, ("audio", "text", "caption", "speaker"), [])
-        with self.assertRaisesRegex(ValueError, "separately curated"):
+        with self.assertRaisesRegex(ValueError, "held-out nonverbal samples cannot substitute"):
             compare.compare(self.args, self.source, self.out, root=self.root)
         self.assertEqual(len(self.runs), 0)
 
