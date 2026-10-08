@@ -34,7 +34,8 @@ class NonverbalLoRATests(unittest.TestCase):
         self.args = argparse.Namespace(
             profile="demo", workspace=str(self.out),
             codec_attempt="codec_attempt_001",
-            checkpoint=None, steps=24, run=False, max_per_style=3,
+            checkpoint=None, steps=24, run=False, fetch_checkpoint=False,
+            max_per_style=3,
         )
         ds.scan(self.args, self.source, self.out)
         inv = ds.read_csv(self.out / "inventory.csv")
@@ -111,6 +112,20 @@ class NonverbalLoRATests(unittest.TestCase):
         self.assertFalse(Path(report["output"]).exists())
         self.assertEqual((self.out / "review.csv").read_bytes(), self.review)
 
+    def test_fetch_and_training_are_mutually_exclusive(self):
+        self.args.run = True
+        self.args.fetch_checkpoint = True
+        with self.assertRaisesRegex(ValueError, "separate commands"):
+            lora.plan(self.args, self.source, self.out, root=self.root)
+
+    def test_codec_path_rebase_refuses_missing_latents(self):
+        codec = self.out / "nonverbal_pilot/codec_attempt_001"
+        src = lora.load_jsonl(codec / "train_manifest.jsonl")
+        latent = codec / src[0]["latent_path"]
+        latent.unlink()
+        with self.assertRaisesRegex(RuntimeError, "manifest row"):
+            lora.plan(self.args, self.source, self.out, root=self.root)
+
     def test_no_checkpoint_blocks_opted_in_training(self):
         self.args.run = True
         with self.assertRaisesRegex(FileNotFoundError, "Full-precision"):
@@ -127,6 +142,10 @@ class NonverbalLoRATests(unittest.TestCase):
             manifest = Path(argv[argv.index("--manifest") + 1])
             rows = lora.load_jsonl(manifest)
             self.assertEqual(len(rows), 4)
+            # Regression: codec manifest's relative latent_path must be
+            # relocated before the split is written in lora_attempt.
+            self.assertTrue(all(Path(r["latent_path"]).is_absolute() for r in rows))
+            self.assertTrue(all(Path(r["latent_path"]).is_file() for r in rows))
             self.assertIn("--gradient-checkpointing", argv)
             self.assertIn("--no-wandb", argv)
             self.assertEqual(argv[argv.index("--max-steps") + 1], "24")
@@ -140,7 +159,9 @@ class NonverbalLoRATests(unittest.TestCase):
         self.assertEqual(report["status"], "TRAIN_COMMAND_EXITED_ZERO_NOT_QUALITY_VALIDATED")
         self.assertEqual(len(invoked), 1)
         p = Path(report["output"])
-        self.assertEqual(len(lora.load_jsonl(p / "holdout.jsonl")), 2)
+        holdout = lora.load_jsonl(p / "holdout.jsonl")
+        self.assertEqual(len(holdout), 2)
+        self.assertTrue(all(Path(r["latent_path"]).is_file() for r in holdout))
         self.assertEqual((p / "upstream_config.yaml").read_text(),
                          (self.root / "Irodori-TTS/configs/train_v4_small_lora.yaml").read_text())
         self.assertEqual((self.out / "review.csv").read_bytes(), self.review)
