@@ -308,6 +308,11 @@ RVC-WebUI には `self/` を dataset path として渡します。
 - RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
 
+
+## Irodori-TTS LoRA dataset preparation
+
+Use the repository-owned, read-only dataset workflow instead of unpacking separate ZIP tools. See [docs/irodori_dataset.md](docs/irodori_dataset.md). Existing review data is reused; ASR runs in a separate environment.
+
 ## Git policy
 
 Git にはコードと設定だけを保存します。音声・モデル・キャッシュ・学習成果物はローカル管理です。
