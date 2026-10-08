@@ -190,6 +190,10 @@ class NonverbalLoRATests(unittest.TestCase):
             self.assertIn("--no-wandb", argv)
             self.assertEqual(argv[argv.index("--max-steps") + 1], "24")
             self.assertIn("--lora", argv)
+            adapter = Path(argv[argv.index("--output-dir") + 1]) / "checkpoint_final"
+            adapter.mkdir(parents=True)
+            (adapter / "adapter_config.json").write_text('{"peft_type":"LORA"}')
+            (adapter / "adapter_model.safetensors").write_bytes(b"fake-weights")
             return SimpleNamespace(returncode=0)
         with contextlib.redirect_stdout(io.StringIO()):
             report = lora.plan(
@@ -197,6 +201,8 @@ class NonverbalLoRATests(unittest.TestCase):
                 root=self.root, runner=runner
             )
         self.assertEqual(report["status"], "TRAIN_COMMAND_EXITED_ZERO_NOT_QUALITY_VALIDATED")
+        self.assertEqual(report["lora_training"], "COMPLETED_COMMAND")
+        self.assertTrue(Path(report["adapter_path"]).is_dir())
         self.assertEqual(len(invoked), 1)
         p = Path(report["output"])
         holdout = lora.load_jsonl(p / "holdout.jsonl")
@@ -205,6 +211,19 @@ class NonverbalLoRATests(unittest.TestCase):
         self.assertEqual((p / "upstream_config.yaml").read_text(),
                          (self.root / "Irodori-TTS/configs/train_v4_small_lora.yaml").read_text())
         self.assertEqual((self.out / "review.csv").read_bytes(), self.review)
+
+    def test_zero_exit_without_adapter_is_not_reported_as_success(self):
+        self.args.run = True
+        (self.root / "Irodori-TTS/model.safetensors").write_bytes(b"base")
+        with contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, "adapter checkpoint missing"):
+                lora.plan(
+                    self.args, self.source, self.out, root=self.root,
+                    runner=lambda cmd, **kw: SimpleNamespace(returncode=0),
+                )
+        p = self.out / "nonverbal_pilot/lora_attempt_001/result.json"
+        report = json.loads(p.read_text(encoding="utf-8"))
+        self.assertEqual(report["status"], "TRAIN_EXITED_ZERO_BUT_ADAPTER_MISSING")
 
     def test_wrong_dacvae_status_blocks(self):
         p = self.out / "nonverbal_pilot/codec_attempt_001/result.json"
