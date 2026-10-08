@@ -83,6 +83,8 @@ def command(python: Path, root: Path, upstream: Path, checkpoint: Path,
             seconds: float | None = None) -> list[str]:
     if not ref_latents or steps < 1:
         raise ValueError("Invalid A/B reference or sampling step count")
+    if seconds is not None and not 1.0 <= seconds <= 20.0:
+        raise ValueError("Fixed duration must be within 1..20 seconds")
     if os.name == "nt":
         shared = (upstream / ".localvoice-toolchain" /
                   "ffmpeg-7.0.2-full-shared" / "bin")
@@ -113,8 +115,6 @@ def command(python: Path, root: Path, upstream: Path, checkpoint: Path,
     # Default: official duration prediction. Optional fixed seconds isolates
     # voice/timbre from the LoRA-trained duration predictor.
     if seconds is not None:
-        if not 1.0 <= seconds <= 20.0:
-            raise ValueError("Fixed duration must be within 1..20 seconds")
         cmd += ["--seconds", str(seconds)]
     return cmd
 
