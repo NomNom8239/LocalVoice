@@ -294,6 +294,66 @@ prompts/seeds/reference conditions, testing both nonverbal sound
 and preservation of normal speech. Never promote this smoke adapter
 to production solely because training finishes.
 
+## Paired nonverbal generation comparison (base vs 24-step LoRA)
+
+After `nonverbal-lora -Run` finishes and creates the Irodori PEFT adapter
+under `lora_attempt_001/adapter/checkpoint_final/`, compare **the
+unaltered base and experimental adapter** using the same model checkpoint,
+speaker reference, prompts, captions, sampling seed, duration and
+inference settings. Start with a read-only plan:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-compare -Speaker Ui_Shigure
+~~~
+
+Explicitly generate the comparison WAVs:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-compare -Speaker Ui_Shigure -Run
+~~~
+
+The comparison runner loads the same base checkpoint path recorded in the
+training attempt; it refuses a missing or incomplete PEFT adapter and
+verifies the 4+2 train/holdout separation. It **automatically chooses
+one SHA-256-verified, previously curated ordinary speech clip** (3–16s)
+from the existing 1,041 candidate table as a speaker reference, outside
+the six nonverbal candidates. There is no manual audio classification,
+Caption editing or ASR step; no held-out nonverbal WAV is used as
+speaker-reference audio.
+
+Five prompts are tested, each with **base** and **LoRA** output WAV
+under an isolated `lora_attempt_001/comparison_NNN`:
+
+- `breath_caption`: `😮‍💨` + the held-out automatic caption.
+- `breath_emoji_only`: `😮‍💨` without caption.
+- `groan_caption`: `🥵` + the held-out automatic caption.
+- `groan_emoji_only`: `🥵` without caption.
+- `normal_speech`: fixed Japanese conversational sentence, without caption.
+
+Each pair uses the **same** seed (`20261008`), reference WAV, output
+duration (3.0s for nonverbal, 3.5s for speech), 8-step Sway sampling
+and bf16 model / FP32 codec inference to limit VRAM demand. Results:
+10 WAVs, individual `.log` files and `result.json` with duration,
+format, completion count and exact paths. Existing data and checkpoints
+are not modified. Windows inference reuses the same project-local
+FFmpeg 7 shared DLLs used by DACVAE, when required.
+
+The script validates **successful audio generation only**: it does not
+claim a useful LoRA, target-speaker quality, intelligible speech,
+or nonverbal correctness. The test set is only 1 held-out sound per
+class; acoustic efficacy and normal-speech preservation remain
+**unvalidated**. In particular, `🥵`/ `😮‍💨` standalone emojis
+as training text are hypotheses, not an officially verified technique.
+Human listening is optional, *not* a prerequisite to automate the
+dataset; only irreducibly ambiguous source labels are queued for
+manual classification.
+
+The older LoRA script could report `lora_training: STARTED` after an
+exit-zero completion: the training **status** is authoritative for older
+runs, and the comparison runner also verifies the actual adapter
+checkpoint files. New runs mark completion explicitly and fail if
+the checkpoint files are missing.
+
 **Validation gates before actual training:**
 1. Check tokenizer acceptance and whether standalone emoji is preserved as a
    meaningful text condition (not just a nonempty string).
