@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -48,8 +49,8 @@ def parse_manifest(path: Path) -> list[dict]:
         raise FileNotFoundError(path)
     with path.open("r", encoding="utf-8") as f:
         values = [json.loads(line) for line in f if line.strip()]
-    if len(values) != 8:
-        raise ValueError(f"Expected 8 rows in official manifest: got {len(values)}")
+    if len(values) < 2:
+        raise ValueError(f"Expected at least 2 rows in official manifest: got {len(values)}")
     visited = set()
     for row in values:
         if not isinstance(row.get("text"), str) or not row["text"].strip():
@@ -68,14 +69,17 @@ def parse_manifest(path: Path) -> list[dict]:
     return values
 
 
-def read_lv03_result(workspace: Path, source_sha: dict[str, str]) -> Path:
-    codec = workspace / MANIFEST_DIR
+def read_lv03_result(workspace: Path, source_sha: dict[str, str],
+                     attempt: str = MANIFEST_DIR) -> Path:
+    if not re.fullmatch(r"lv03_dacvae_\d{3}", attempt):
+        raise ValueError("Expected a versioned lv03_dacvae_NNN attempt name")
+    codec = workspace / attempt
     result = codec / "lv03_final_result.json"
     if not result.is_file():
         raise FileNotFoundError(f"LV-03 completion evidence missing: {result}")
     document = json.loads(result.read_text(encoding="utf-8"))
     if (document.get("status") != "PASS_LV03_DACVAE_AND_DATASET"
-            or document.get("train_rows") != 8
+            or document.get("train_rows") != len(source_sha) - 3
             or document.get("evaluation_rows") != 3
             or document.get("training_started") is not False):
         raise ValueError("LV-03 completion result is incomplete or invalid")
@@ -124,9 +128,12 @@ def resolve_checkpoint(upstream: Path, selected: Path | None) -> tuple[Path, str
 
 def build_command(python: Path, upstream: Path, config: Path, manifest: Path,
                   checkpoint: Path, output: Path, steps: int,
-                  resume: Path | None = None) -> list[str]:
-    if not 20 <= steps <= 300:
-        raise ValueError("LV-04 baseline steps must be 20..300")
+                  resume: Path | None = None, *,
+                  valid_ratio: float = VALID_RATIO) -> list[str]:
+    if not 20 <= steps <= 10000:
+        raise ValueError("LoRA steps must be 20..10000")
+    if not 0 < valid_ratio < 1:
+        raise ValueError("Validation ratio must be between 0 and 1")
     cmd = [
         str(python), "-u", str(upstream / "train.py"),
         "--config", str(config),
@@ -141,7 +148,7 @@ def build_command(python: Path, upstream: Path, config: Path, manifest: Path,
         "--warmup-steps", "8",
         "--save-every", "30", "--log-every", "5",
         "--checkpoint-best-n", "2",
-        "--valid-ratio", "0.125", "--valid-every", "20",
+        "--valid-ratio", str(valid_ratio), "--valid-every", "20",
         "--ref-min-seconds", "1", "--ref-max-seconds", "12",
         "--gradient-checkpointing", "--no-compile-model", "--no-wandb",
         "--seed", "0",
@@ -245,11 +252,23 @@ def prepare(args: argparse.Namespace) -> dict:
     config = upstream / "configs" / "train_v4_small_lora.yaml"
     if not python.is_file() or not config.is_file() or not (upstream / "train.py").is_file():
         raise FileNotFoundError("Existing Irodori train/config/venv missing")
-    train_source, source_sha = verify_sources(workspace)
-    manifest = read_lv03_result(workspace, source_sha)
+    lv03_attempt = getattr(args, "lv03_attempt", MANIFEST_DIR)
+    if not re.fullmatch(r"lv03_dacvae_\d{3}", lv03_attempt):
+        raise ValueError("Invalid LV-03 attempt name")
+    lv03_evidence = workspace / lv03_attempt / "lv03_final_result.json"
+    if not lv03_evidence.is_file():
+        raise FileNotFoundError(lv03_evidence)
+    lv03_report = json.loads(lv03_evidence.read_text(encoding="utf-8"))
+    selected_csv = Path(lv03_report.get("training_csv") or
+                        workspace / "dataset_for_prepare_manifest_approved_train.csv").resolve()
+    train_source, source_sha = verify_sources(workspace, selected_csv)
+    if lv03_report.get("training_csv_sha256") and (
+            hash_file(train_source) != lv03_report["training_csv_sha256"]):
+        raise ValueError("LV-03 training CSV content changed")
+    manifest = read_lv03_result(workspace, source_sha, lv03_attempt)
     rows = parse_manifest(manifest)
-    if len(rows) != 8:
-        raise ValueError("Official manifest is not eight items")
+    if len(rows) != len(source_sha) - 3:
+        raise ValueError("Manifest row count differs from frozen source evidence")
     revision = official_version(upstream)
     checkpoint, kind = resolve_checkpoint(upstream, args.checkpoint)
     text = config.read_text(encoding="utf-8")
@@ -264,6 +283,8 @@ def prepare(args: argparse.Namespace) -> dict:
         "upstream_revision": revision,
         "source_sha": source_sha,
         "training_input_csv": str(train_source),
+        "train_rows": len(rows),
+        "lv03_attempt": lv03_attempt,
         "train_manifest_sha256": hash_file(manifest),
         "config_sha256": hash_file(config),
         "checkpoint_sha256": CHECKPOINT_SHA256,
@@ -275,6 +296,9 @@ def main() -> int:
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--checkpoint", type=Path)
     parser.add_argument("--steps", type=int, default=BASELINE_STEPS)
+    parser.add_argument("--lv03-attempt", default=MANIFEST_DIR,
+                        help="Use a passed newer LV-03 attempt, not an unverified manifest")
+    parser.add_argument("--valid-ratio", type=float, default=VALID_RATIO)
     parser.add_argument("--timeout", type=int, default=10800,
                         help="Training timeout in seconds")
     parser.add_argument("--infer-timeout", type=int, default=1800)
@@ -284,6 +308,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.timeout < 1 or args.infer_timeout < 1:
         raise ValueError("timeouts must be positive")
+    if not 0 < args.valid_ratio < 1:
+        raise ValueError("Invalid validation ratio")
     data = prepare(args)
     workspace = data["workspace"]
     # Construct preview only; no output directory is created in dry run.
@@ -294,18 +320,21 @@ def main() -> int:
     resume = args.resume.expanduser().resolve() if args.resume else None
     cmd = build_command(data["python"], data["upstream"], data["config"],
                         data["manifest"], data["checkpoint"],
-                        candidate / "adapter", args.steps, resume)
+                        candidate / "adapter", args.steps, resume,
+                        valid_ratio=args.valid_ratio)
     plan = {
         "status": "PREFLIGHT_PASS_PLAN_ONLY" if not args.run else "TRAIN_STARTING",
         "upstream_commit": data["upstream_revision"],
         "manifest": str(data["manifest"]),
         "manifest_sha256": data["train_manifest_sha256"],
         "train_source_csv": data["training_input_csv"],
-        "approved_train": 8,
-        "internal_train_expected": 7,
-        "internal_validation_expected": 1,
+        "approved_train": data["train_rows"],
+        "internal_train_expected": data["train_rows"] - max(1, min(data["train_rows"] - 1,
+                                                                  int(data["train_rows"] * args.valid_ratio))),
+        "internal_validation_expected": max(1, min(data["train_rows"] - 1,
+                                                    int(data["train_rows"] * args.valid_ratio))),
         "independent_eval_untouched": 3,
-        "validation_ratio": VALID_RATIO,
+        "validation_ratio": args.valid_ratio,
         "steps": args.steps,
         "base_checkpoint_sha256": data["checkpoint_sha256"],
         "base_checkpoint": str(data["checkpoint"]),
@@ -320,7 +349,8 @@ def main() -> int:
     attempt = fresh_attempt(workspace)
     cmd = build_command(data["python"], data["upstream"], data["config"],
                         data["manifest"], data["checkpoint"],
-                        attempt / "adapter", args.steps, resume)
+                        attempt / "adapter", args.steps, resume,
+                        valid_ratio=args.valid_ratio)
     plan["command"] = cmd
     plan["output"] = str(attempt)
     save_json(attempt / "plan.json", plan)
@@ -344,7 +374,7 @@ def main() -> int:
         print(str(err))
         return 2
     # Separate external three evaluation clips remain untouched.
-    _, observed_sha = verify_sources(workspace)
+    _, observed_sha = verify_sources(workspace, Path(data["training_input_csv"]))
     if observed_sha != data["source_sha"]:
         raise RuntimeError("Source WAV SHA set changed during training")
     if hash_file(data["manifest"]) != data["train_manifest_sha256"]:
