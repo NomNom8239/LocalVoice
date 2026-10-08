@@ -61,6 +61,30 @@ class LV03NoCodexTests(unittest.TestCase):
         self.assertEqual(source.name, "dataset_for_prepare_manifest_approved_train.csv")
         self.assertEqual(len(all_ids), 11)
 
+    def test_versioned_train_nine_is_accepted_without_changing_legacy(self) -> None:
+        path = self.workspace / "video_train__clip011.wav"
+        path.write_bytes(b"approved additional reference")
+        new_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+        inv = runner.rows(self.workspace / "inventory.csv")
+        inv[11] = {"clip_id": "new-approved", "source_path": str(path),
+                   "sha256": new_sha}
+        write_rows(self.workspace / "inventory.csv",
+                   ["clip_id", "source_path", "sha256"], inv)
+        version = self.workspace / "lv02_expansion_001"
+        version.mkdir()
+        candidate = version / "dataset_for_prepare_manifest_approved_train.csv"
+        extra = {"clip_id": "new-approved", "audio": str(path),
+                 "sha256": new_sha, "speaker": "Ui_Shigure",
+                 "text": "追加承認済みです。", "caption": ""}
+        write_rows(candidate, ["clip_id", "audio", "sha256", "speaker",
+                               "text", "caption"], [*self.trains, extra])
+        selected, hashes = runner.verify_sources(self.workspace, candidate)
+        self.assertEqual(selected, candidate)
+        self.assertEqual(len(hashes), 12)
+        legacy, old = runner.verify_sources(self.workspace)
+        self.assertEqual(len(old), 11)
+        self.assertEqual(legacy.name, "dataset_for_prepare_manifest_approved_train.csv")
+
     def test_train_eval_same_video_fails_closed(self) -> None:
         old = Path(self.evals[0]["audio"])
         renamed = old.with_name(old.name.replace("video_eval__", "video_train__"))
