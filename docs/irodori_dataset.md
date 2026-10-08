@@ -28,8 +28,11 @@ The first `asr` invocation creates a separate `LocalVoice/.venv-asr` with `uv`. 
 Run `triage` after ASR to create `triage.csv` in the existing workspace.
 It reads the 1,167-row review table and ASR suggestions without changing
 either, then groups **pending** clips by review priority: invalid audio,
-short audio (not sent to ASR), speech not detected, very brief/repeated
-utterances, short transcripts and ordinary candidates.
+short audio without an ASR transcript, speech not detected, very brief/repeated
+utterances, short transcripts and ordinary candidates. Short clips successfully
+processed via `asr -IncludeShort` are subsequently sorted by their ASR status
+or transcript characteristics, not automatically left in `short_audio`.
+These are still review priorities, **not** confirmed laughter/breath/groan labels.
 
 These groups are *inspection hints*, not automatic confirmations of
 breathing, groaning, whispering or the correct speaker. Listen and edit
