@@ -167,6 +167,51 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "ASR hash mismatch"):
             mod.triage(self.args, self.source, self.out)
 
+    def test_interactive_review_approves_only_after_confirmation(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+        )
+        with patch("builtins.input", side_effect=[
+            "a", "normal", "こんにちは", "", "y"
+        ]):
+            mod.review(args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["decision"], "approved")
+        self.assertEqual(row["text"], "こんにちは")
+        self.assertEqual(row["speaker_ok"], "yes")
+        self.assertEqual(mod.digest(self.wav), self.original)
+
+    def test_interactive_review_can_tag_nonverbal_without_approval(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+        )
+        with patch("builtins.input", side_effect=[
+            "t", "breath", "Possible breath, confirm later"
+        ]):
+            mod.review(args, self.source, self.out)
+        row = mod.read_csv(self.out / "review.csv")[0]
+        self.assertEqual(row["decision"], "pending")
+        self.assertEqual(row["style"], "breath")
+        self.assertEqual(row["text"], "")
+        self.assertEqual(mod.digest(self.wav), self.original)
+        with self.assertRaises(ValueError):
+            mod.export(self.args, self.source, self.out)
+
+    def test_interactive_review_fails_if_audio_changed(self):
+        mod.scan(self.args, self.source, self.out)
+        mod.triage(self.args, self.source, self.out)
+        with self.wav.open("ab") as stream:
+            stream.write(b"changed")
+        args = argparse.Namespace(
+            kind="all", group=None, limit=1, no_play=True, player="ffplay"
+        )
+        with self.assertRaisesRegex(ValueError, "WAV missing/changed"):
+            mod.review(args, self.source, self.out)
+
     def test_existing_workspace_is_reused(self):
         legacy = self.root / "Irodori-TTS" / "outputs" / "localvoice_lora_dataset"
         legacy.mkdir(parents=True)
