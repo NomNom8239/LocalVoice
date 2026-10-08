@@ -114,6 +114,36 @@ All original 15 nonverbal items remain present in the audit; at most three
 per supported style enter this **hypothesis-only** pilot.
 The `nonverbal_experiments.csv` source is unchanged.
 
+## Tokenizer compatibility check (no training)
+
+Use the *actual v4-Small model config* at
+`Irodori-TTS/configs/train_v4_small.yaml`. It identifies the
+`sbintuitions/modernbert-ja-310m` tokenizer and a specific immutable
+revision. Check its emoji encoding rather than guessing from the displayed
+characters. With the already generated six hypotheses:
+
+~~~powershell
+.\scripts\irodori.ps1 nonverbal-check -Speaker Ui_Shigure
+~~~
+
+The script reads the original nonverbal candidate audit and inventory,
+verifies original WAV SHA-256 values and the chosen subset, loads **only**
+the pinned HF tokenizer (not the model weights), checks unknown tokens,
+BOS handling and emoji roundtrip, and writes:
+
+- `nonverbal_pilot/tokenizer_audit.csv`: IDs, token representations,
+  unknown-token counts, roundtrip and pass/block status.
+- `nonverbal_pilot/hf_audio_dataset_hypothesis.jsonl`: local audio
+  paths in a Hugging Face JSON layout matching the Irodori
+  `--dataset json --data-files` input route.
+
+`PASS_TOKENIZATION_ONLY` **does not mean the emoji controls a
+generated vocalization**, that DACVAE has encoded the WAV, or that
+LoRA training has worked. A `BLOCK` return prevents continuing the
+experiment with unsupported emoji representations. The JSONL stays in
+`nonverbal_pilot`, isolated from the speech training dataset.
+No manual text entry, Caption entry or sound playback is required.
+
 **Validation gates before actual training:**
 1. Check tokenizer acceptance and whether standalone emoji is preserved as a
    meaningful text condition (not just a nonempty string).
