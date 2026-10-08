@@ -352,3 +352,34 @@ for any particular vocal style, which requires later evaluation.
 Git にはコードと設定だけを保存します。音声・モデル・キャッシュ・学習成果物はローカル管理です。
 
 GitHub Actions は使用せず、検証はローカル環境で行います。
+
+## Single-command expressive LoRA from existing WAV files
+
+Use only voice data you own or have permission to process. Input is the existing
+LocalVoice/data/training_audio/Ui_Shigure/audio directory and existing LV-02 tables.
+
+Run from the LocalVoice root after git pull:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\irodori_train_direct.py --run
+~~~
+
+The run automatically reuses curated training voice data (up to 320 additional
+normal clips, distributed by source video), frozen original 8 clips, and existing
+human-labelled tokenizer-checked nonverbal breath/groan pilot data. The independent
+3 evaluation examples and their source video stay excluded from training.
+Auto-generated ASR text is provisional, not independently verified.
+
+One fresh direct_lora_NNN output directory holds the checked source CSV,
+official DACVAE manifest, weighted experimental nonverbal manifest,
+LoRA adapter, training logs, result.json, and matched Base vs LoRA WAVs
+for normal Japanese speech plus the present breath/groan classes.
+
+The official Irodori training is configured with duration_predictor frozen;
+when nonverbal latents are repeated, potentially leaking internal random
+validation is disabled. This is a technical trial, not proof of similarity
+or NSFW quality. It does not support absent classes without real labeled data.
+No Codex, new downloads, full ASR rerun, or 48-item review loop is required.
+
+LocalVoice .venv drives the workflow; Irodori-TTS/.venv runs official
+prepare_manifest.py, train.py, and infer.py. Existing artifacts are not overwritten.
