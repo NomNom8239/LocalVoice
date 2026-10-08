@@ -272,3 +272,26 @@ def read_csv_columns(path: Path) -> list[str]:
     with path.open("r", encoding="utf-8-sig", newline="") as stream:
         return list(csv.DictReader(stream).fieldnames or [])
 
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--profile", required=True)
+    parser.add_argument("--workspace")
+    parser.add_argument("--resolve", action="store_true")
+    parser.add_argument("--limit", type=int, default=20)
+    parser.add_argument("--no-play", action="store_true")
+    args = parser.parse_args()
+    try:
+        source, out = paths(args)
+        if args.resolve:
+            resolve(args, source, out)
+        else:
+            build(args, source, out)
+        return 0
+    except (RuntimeError, ValueError, FileNotFoundError, OSError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
