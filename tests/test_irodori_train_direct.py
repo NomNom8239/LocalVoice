@@ -1,6 +1,7 @@
 """CPU-only checks for the one-command Irodori expressive LoRA pipeline."""
 from __future__ import annotations
 
+import csv
 import json
 import math
 import struct
@@ -9,6 +10,7 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import irodori_train_direct as direct
@@ -116,6 +118,53 @@ class DirectLoraTests(unittest.TestCase):
             [row], inventory, strict_acoustic_gate=False)
         self.assertEqual(tampered, [])
         self.assertEqual(rejection["missing_or_sha_changed"], 1)
+
+    def test_existing_tokenizer_checked_nonverbal_pilot_is_experimental(self):
+        import irodori_nonverbal_manifest
+
+        pilot = self.root / "nonverbal_pilot"
+        pilot.mkdir()
+        (pilot / "hf_audio_dataset_hypothesis.jsonl").write_text("")
+        (pilot / "tokenizer_audit.csv").write_text("")
+        audio = self.root / "voice_video__breath.wav"
+        audio.write_bytes(b"synthetic fixture, not for DACVAE")
+        with (pilot / "audit.csv").open("w", encoding="utf-8", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=[
+                "clip_id", "style", "style_source"])
+            writer.writeheader()
+            writer.writerow({
+                "clip_id": "breath1", "style": "breath",
+                "style_source": "ast_experimental",
+            })
+        state = {
+            "inventory": {
+                "breath1": {
+                    "clip_id": "breath1", "source_path": str(audio),
+                    "sha256": "fixed-source-hash",
+                },
+            },
+            "auto": {"breath1": {"source_kind": "my_voice"}},
+            "review": {"breath1": {"decision": "pending"}},
+            "train_ids": set(), "eval_ids": set(), "eval_videos": set(),
+        }
+        pilot_rows = [{
+            "audio": str(audio), "text": "😮‍💨",
+            "caption": "息を吐く、吐息を伴う発声",
+        }]
+        with patch.object(irodori_nonverbal_manifest, "validate_sources",
+                          return_value=pilot_rows):
+            rows = direct.nonverbal_rows(state, self.root, self.root)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["kind"], "experimental_nonverbal_breath")
+            state["auto"]["breath1"]["source_kind"] = "unknown"
+            self.assertEqual(
+                direct.nonverbal_rows(state, self.root, self.root), []
+            )
+            state["auto"]["breath1"]["source_kind"] = "my_voice"
+            state["eval_videos"] = {"voice_video"}
+            self.assertEqual(
+                direct.nonverbal_rows(state, self.root, self.root), []
+            )
 
     def test_round_robin_balances_video_source(self):
         clips = [
