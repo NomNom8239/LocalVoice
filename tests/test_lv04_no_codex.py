@@ -38,6 +38,37 @@ class LV04Tests(unittest.TestCase):
     def test_manifest_eight(self):
         self.assertEqual(len(lv04.parse_manifest(self.manifest)), 8)
 
+    def test_expanded_manifest_and_source_count(self):
+        latent = self.root / "additional.pt"
+        latent.write_bytes(b"expanded latent")
+        self.rows.append({
+            "text": "承認済みの追加音声",
+            "speaker_id": lv04.SPEAKER_ID,
+            "num_frames": 51,
+            "latent_path": latent.name,
+        })
+        self.manifest.write_text(
+            "".join(json.dumps(item, ensure_ascii=False) + "\n"
+                    for item in self.rows), encoding="utf-8",
+        )
+        self.assertEqual(len(lv04.parse_manifest(self.manifest)), 9)
+        codec = self.root / "lv03_dacvae_012"
+        codec.mkdir()
+        sources = {f"clip{i}": f"hash{i}" for i in range(12)}
+        result = {
+            "status": "PASS_LV03_DACVAE_AND_DATASET",
+            "train_rows": 9, "evaluation_rows": 3,
+            "training_started": False,
+            "input_sha256_by_clip": sources,
+            "manifest": str(codec / "train_manifest.jsonl"),
+        }
+        (codec / "lv03_final_result.json").write_text(json.dumps(result))
+        self.assertEqual(lv04.read_lv03_result(
+            self.root, sources, "lv03_dacvae_012"),
+            codec / "train_manifest.jsonl")
+        with self.assertRaisesRegex(ValueError, "attempt name"):
+            lv04.read_lv03_result(self.root, sources, "../unsafe")
+
     def test_missing_latent_is_rejected(self):
         self.latents[2].unlink()
         with self.assertRaisesRegex(ValueError, "Missing or duplicate latent"):
