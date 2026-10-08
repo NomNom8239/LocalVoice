@@ -94,6 +94,25 @@ type your corrected style. The existing `a` / `t` / `n` human actions
 remain authoritative and transcription requirements are unchanged. Machine
 suggestions cannot create `approved` or `tagged` judgments by themselves.
 
+#### Pilot evaluation after listening
+
+Review the original 20 clips first. With the original `no_detected_text`
+triage queue, these are the first 20 clips that were classified:
+
+```powershell
+.\scripts\irodori.ps1 review -Speaker Ui_Shigure -Kind all -Group no_detected_text -Limit 20
+.\scripts\irodori.ps1 evaluate -Speaker Ui_Shigure
+```
+
+`evaluate` compares only existing `style_suggestions.csv` against the
+current human review decisions and writes `style_pilot_evaluation.csv`.
+It does not change either source CSV or any WAV and does not load the
+model. `approved` and `needs_text` with confirmed speaker/quality provide
+comparable human style labels; `tagged` is **tentative** and is reported
+separately; `rejected`, `pending`, and model `unknown` are excluded from
+the simple exact-match denominator. A small convenience match fraction
+is not a validated precision or recall estimate, especially for this
+nonrandom, no-ASR-speech-detected pilot sample.
 Do not treat this as a validated classifier until manual evaluation has been
 performed across all target styles, including negative/background-only
 examples. Because AST is trained on 10-second AudioSet clips, performance on
