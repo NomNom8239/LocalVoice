@@ -144,6 +144,26 @@ class AutoPrepTests(unittest.TestCase):
         self.assertEqual(result["training_candidates"], 0)
         self.assertEqual(data.digest(self.wav), self.orig_hash)
 
+    def test_existing_tentative_label_never_gets_manual_reverification(self):
+        rows = data.read_csv(self.out / "review.csv")
+        rows[0].update({
+            "source_kind": "review_emotion",
+            "decision": "tagged", "style": "groan",
+        })
+        data.write_csv(self.out / "review.csv", data.COLUMNS, rows)
+        before = (self.out / "review.csv").read_bytes()
+        self.put_asr(status="suggested", text="えっ")
+        self.put_style("normal", uncertainty="review_priority")
+        result = auto.build(self.args, self.source, self.out)
+        self.assertEqual(result["manual_style_review_cases"], 0)
+        self.assertEqual(result["training_candidates"], 0)
+        self.assertEqual(result["routes"]["deferred_unresolved_audio"], 1)
+        audit = data.read_csv(self.out / "auto_preparation_report.csv")[0]
+        self.assertEqual(audit["reason"], "human_tentative_style_ast_conflict")
+        self.assertEqual(audit["candidate_style"], "groan")
+        self.assertEqual((self.out / "review.csv").read_bytes(), before)
+        self.assertEqual(data.digest(self.wav), self.orig_hash)
+
     def test_clear_expressive_style_requires_no_human_prompt(self):
         reviews = data.read_csv(self.out / "review.csv")
         reviews[0]["source_kind"] = "review_emotion"
