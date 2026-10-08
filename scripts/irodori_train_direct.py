@@ -333,30 +333,52 @@ def weighted_manifest(manifest: Path, folder: Path,
 
 
 def infer_pair(root: Path, upstream: Path, py: Path, checkpoint: Path,
-               adapter: Path, manifest: Path, output: Path, env: dict) -> dict:
+               adapter: Path, manifest: Path, output: Path,
+               expressive_rows: list[dict], env: dict) -> dict:
     rows = [json.loads(s) for s in manifest.read_text(encoding="utf-8").splitlines()
             if s.strip()]
-    refs = [Path(item["latent_path"]) for item in rows[:4]]
+    # More same-speaker references are closer to the previously verified
+    # Base-clone setup (11 references, FP32, 40 RF steps, seed 42).
+    refs = [Path(item["latent_path"]) for item in rows[:11]]
     refs = [(p if p.is_absolute() else manifest.parent / p).resolve() for p in refs]
-    if len(refs) < 4 or not all(p.is_file() for p in refs):
-        raise ValueError("Four original normal speech reference latents required")
-    result = {}
-    text = "おはようございます。今日はよろしくお願いします。"
-    for variant, adapter_path in (("base", None), ("lora", adapter)):
-        wav = output / f"speech_{variant}.wav"
+    if len(refs) < 11 or not all(p.is_file() for p in refs):
+        raise ValueError("Eleven normal speech reference latents required")
+
+    def generate(label: str, *, adapter_path: Path | None, text: str,
+                 caption: str | None = None, seconds: float | None = None) -> dict:
+        wav = output / f"{label}.wav"
         cmd = inference_command(py, root, upstream, checkpoint, adapter_path,
-                                refs, text, wav, seed=42, steps=40)
-        # Use stable full-precision inference (known better Base-clone
-        # baseline than 8-step sway/bf16 tests).
+                                refs, text, wav, seed=42, steps=40,
+                                seconds=seconds)
         if "--model-precision" in cmd:
             cmd[cmd.index("--model-precision") + 1] = "fp32"
-        log = output / f"speech_{variant}.log"
+        if caption:
+            cmd += ["--caption", caption]
+        log = output / f"{label}.log"
         code, reason = stream(cmd, cwd=upstream, log=log, env=env, timeout=2400)
         if code or not wav.is_file() or wav.stat().st_size < 100:
-            raise command_error(f"{variant} inference", log, code, reason)
-        result[variant] = {"wav": str(wav), "sha256": sha256(wav)}
-    return result
+            raise command_error(f"{label} inference", log, code, reason)
+        return {"wav": str(wav), "sha256": sha256(wav)}
 
+    result = {"speech": {}, "expressions": {}}
+    normal = "おはようございます。今日はよろしくお願いします。"
+    for variant, selected in (("base", None), ("lora", adapter)):
+        result["speech"][variant] = generate(
+            f"speech_{variant}", adapter_path=selected, text=normal)
+    # Expression generation is exploratory and never a correctness/pass gate.
+    # Always derive text+caption from actual checked nonverbal examples.
+    examples = {}
+    for row in expressive_rows:
+        style = row["kind"].removeprefix("human_nonverbal_")
+        if style not in examples:
+            examples[style] = row
+    for style, row in sorted(examples.items()):
+        result["expressions"][style] = {}
+        for variant, selected in (("base", None), ("lora", adapter)):
+            result["expressions"][style][variant] = generate(
+                f"{style}_{variant}", adapter_path=selected,
+                text=row["text"], caption=row["caption"], seconds=3.5)
+    return result
 
 def run(args: argparse.Namespace) -> int:
     if not 32 <= args.max_speech <= 900:
@@ -510,7 +532,7 @@ def run(args: argparse.Namespace) -> int:
         save_json(folder / "result.json", report)
         print("[infer] base and LoRA paired Japanese speech", flush=True)
         report["comparisons"] = infer_pair(root, upstream, python, checkpoint,
-                                          adapter, original, folder, env)
+                                          adapter, original, folder, expressive, env)
         report["status"] = "ADAPTER_AND_PAIRED_WAVS_READY_QUALITY_UNVERIFIED"
         save_json(folder / "result.json", report)
         print(f"{report['status']}\nResult: {folder / 'result.json'}", flush=True)
