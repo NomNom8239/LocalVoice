@@ -216,9 +216,13 @@ async function loadMetadataFolder(list){const files=fileMap(list),m=files.get('m
  state.pendingMeta={info,entries};if(state.pendingOriginal)activate(entries,info,state.pendingOriginal,true);else tell('メタデータ'+info.version+'を読み込みました。続けて原本audioフォルダを選択してください。');}
 async function loadOriginalFolder(list){state.pendingOriginal=fileMap(list);if(state.pendingMeta)activate(state.pendingMeta.entries,state.pendingMeta.info,state.pendingOriginal,true);else tell('原本audioを読み込みました。続けてversions/v2等を選択してください。');}
 function boot(){for(const [key,label] of CATEGORIES){for(const id of ['categoryFilter','manualCategory']){const opt=document.createElement('option');opt.value=key;opt.textContent=label;byId(id).append(opt);}}
- byId('libraryDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存のレビューを破棄して別のライブラリを読み込みますか？')){e.target.value='';return;}
- try{await loadFolder(list);}catch(err){tell('読み込みを中断: '+err.message,true);}e.target.value='';};
- byId('savedReview').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(state.dirty&&!window.confirm('現在の未保存レビューを保存済みJSONで置き換えますか？'))return;await importReview(f);}catch(err){tell('復元を中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('libraryDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存レビューを破棄しますか？')){e.target.value='';return;}
+ try{await loadCandidateFolder(list);}catch(err){tell('候補読込中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('metadataDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存レビューを破棄しますか？')){e.target.value='';return;}
+ try{await loadMetadataFolder(list);}catch(err){tell('メタデータ読込中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('originalDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存レビューを破棄しますか？')){e.target.value='';return;}
+ try{await loadOriginalFolder(list);}catch(err){tell('元WAV読込中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('savedReview').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(state.dirty&&!window.confirm('未保存レビューをCSV/JSONで置き換えますか？'))return;await importReview(f);}catch(err){tell('レビュー復元中断: '+err.message,true);}finally{e.target.value='';}};
  byId('priority').onclick=()=>{state.mode='priority';byId('priority').classList.add('selected');byId('all').classList.remove('selected');filterList();};byId('all').onclick=()=>{state.mode='all';byId('all').classList.add('selected');byId('priority').classList.remove('selected');filterList();};
  for(const id of ['search','categoryFilter','decisionFilter','onlyPending'])byId(id).addEventListener(id==='search'?'input':'change',()=>filterList());
  byId('prev').onclick=()=>move(-1);byId('forward').onclick=()=>move(1);byId('next').onclick=nextUnreviewed;
