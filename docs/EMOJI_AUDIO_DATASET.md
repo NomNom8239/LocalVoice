@@ -1,12 +1,16 @@
 # Human-browsable audio library aligned with Irodori Emoji Palette
 
-Status: Phase 3–5 **design requirement**; not implemented. This is a new design, not a reuse of legacy Irodori ASR/style/LoRA experiments.
+Status (2026-10-09): **Priority MVP design requirement for LV-R04/06/05; category library not implemented.** ASR 12-sample CUDA Pilot is complete but full ASR adoption deferred. Preserve the existing archive/RVC code; do not restore legacy Irodori ASR/style/LoRA experiments.
 
-## User-facing goal
+## User-facing goal and MVP scope
 
-After acquisition, identity verification, transcription, independent acoustic-style classification and human review, export a **folder-browsable reference-audio library**. A person should be able to open a category such as `通常会話`, `笑い`, `喘ぎ`, or `息切れ`, listen to a clip, and select its WAV directly in the official Irodori VoiceDesign WebUI. This export is useful without opening a CSV or running Python.
+**Goal:** Take the existing **1,167** candidate WAVs under `data/training_audio/Ui_Shigure/audio/` and create a **human-browsable Japanese-category reference audio library**. People must be able to open `通常会話`, `囁き`, `吐息`, `笑い`, `喘ぎ_うめき`, `息切れ_荒い呼吸` and other populated categories, listen to real recordings, and manually pick clean, verified reference WAVs in upstream Irodori VoiceDesign **without opening metadata or running Python**.
 
-The labels align with **the actual upstream palette** as implemented in [`Aratako/Irodori-TTS/irodori_tts/gradio_emoji_palette.py`](https://github.com/Aratako/Irodori-TTS/blob/main/irodori_tts/gradio_emoji_palette.py). **Palette buttons are generation controls, not validated audio-classification labels or guarantees of how a recording should be transcribed.** Track the upstream palette revision when freezing the label schema.
+The processing workflow is: **input WAV inventory → acoustic style candidate assessment (LV-R04) + independent identity/recording-quality QC (LV-R06) → targeted replay/reviewer approvals → immutable Japanese-category export (LV-R05)**. Work with real existing candidate WAVs first; **automatic new-stream ingestion is later LV-R07**, and controlling upstream VoiceDesign automatically is out of scope. All 1,167 inputs must have an evidence-backed processing status, but not all must be approved or placed in final folders.
+
+**Speech-to-text is optional metadata.** It is not a prerequisite for classification, QC, human approval or v1 export. The 12-sample Kotoba/Whisper ASR Pilot found hallucinations even on artificial silence, and extreme repetition on nonverbal input, so text/caption must never be treated as the source-ground-truth acoustic label. The 48-sample **ASR** model comparison belongs to later optional ASR formal selection; acoustic **style** validation against human-labeled WAVs remains necessary.
+
+Category names are aligned to the [official Irodori Emoji Palette implementation](https://github.com/Aratako/Irodori-TTS/blob/main/irodori_tts/gradio_emoji_palette.py), but **Emoji Palette entries are synthesis-time controls, not an audio classifier or ground-truth recording labels**. Track palette revision when freezing the taxonomy. Actual reference conditioning also depends on recording quality; a category alone does not guarantee the corresponding style will be synthesized.
 
 ## Initial category taxonomy
 
@@ -27,13 +31,15 @@ The labels align with **the actual upstream palette** as implemented in [`Aratak
 
 Only create populated categories; do not create 40+ empty folders to mirror every palette button. Labels such as `😏 からかう`, `🫶 優しく`, `😠 怒り`, `😪 眠そう`, etc. may be proposed as **secondary tags** until their audible boundaries and human-labeled evaluation data support a separate folder. `⏸️ 間` is not a standalone reference voice class; `📢 エコー` and `📞 電話越し` describe recording/effect conditions and are not separate clean reference voice classes. Their presence should be tracked and may be a QC reason to exclude the clip.
 
-## Ownership by phase
+## Workflow ownership and gates
 
-- **Phase 3 / transcription:** Follow [Phase 3 Japanese ASR contract](PHASE3_JAPANESE_ASR.md). Identify whether a segment has intelligible Japanese words; output timestamps, text when supported, `speech_candidate | non_speech_candidate | uncertain | error` evidence and failure reasons. ASR must not call a clip `喘ぎ`, `笑い`, etc. based on text alone. Its non-speech marker is not a final style label.
-- **Phase 4 / style:** Assess acoustic events and delivery independently of transcript text, using the defined categories and optional secondary tags. Require human review for uncertainty and cases where multiple categories plausibly apply. Distinguish `exhale`, `pant`, `gasp` and `moan`; do not collapse all breath sounds.
-- **Phase 5 / export:** After identity approval, audio QC and human approval, **copy** clean, relevant audio segments to a versioned directory named for the selected primary class. One canonical copy per segment. Other confirmed categories are recorded in metadata; do not duplicate audio across folders by default.
+- **LV-R04 / acoustic style:** Use features **of the WAV audio** to assess ordinary speech and distinguishable vocal events/delivery. Keep speaker identity and recording QC separate. Human-annotate a small, representative set of real clips/segments, freeze a label/uncertainty evaluation protocol, test candidate model/thresholds, then batch-generate **candidates/unknown/failures** for all 1,167 existing WAVs. An ASR transcript and a Pilot selection category are **not** acoustic gold labels. For uncertain, mixed and unsupported evidence, set `unknown` or `requires_review`; do not force a class.
+- **LV-R06 / independent identity/QC and review:** Preserve the distinction between automatically collected `my_voice` and human-reviewed `review_approved`/`review_emotion`. Run recording QC (BGM/effects, other speakers, game voices, clipping/noise, silence, too-short/poor-quality clips), use known approval provenance, prioritize ambiguous/high-risk clips for simple replay, and save approve/reject/defer/edit-label decisions with reviewer/provenance and input fingerprint. **File format eligibility and classification confidence are not human approval.** Do not require a person to listen to every one of the 1,167 files before candidate processing.
+- **LV-R05 / versioned reference library export:** Combine **approved speaker identity + quality acceptance + human-approved primary style**; copy clean clips to one category each in a **new** immutable version under `outputs/datasets/<profile>/<version>/`. Produce an Explorer-friendly index and provenance; keep unapproved/failed material in review/evidence, not the promoted library. Prove the full *existing WAV subset → candidate classification/QC → review → category output → manual VoiceDesign reference selection* integration before publishing v1.
+- **LV-R03 / optional ASR auxiliary:** ASR is a separate, non-blocking source of text/time estimates, not a required stage of acoustic classification or export. Its 12-sample CUDA Pilot passed technically; 48-sample formal comparison and full-ASR adoption are deferred. See [ASR status/contract](PHASE3_JAPANESE_ASR.md).
+- **LV-R07 / later ingestion E2E:** New streaming archive acquisition through processing → library may be implemented after the existing-WAV v1 is usable. Not a v1 completion gate.
 
-The output folder is a **manual lookup tool**, not evidence that emoji-only conditioning or LoRA training works. The upstream VoiceDesign UI remains untouched.
+The output folder is a **manual lookup tool**, not evidence that emoji-only conditioning or LoRA training works. Upstream VoiceDesign UI remains untouched.
 
 ## Intended on-disk output
 
@@ -41,9 +47,11 @@ The output folder is a **manual lookup tool**, not evidence that emoji-only cond
 LocalVoice/
 ├─ data/                              # Existing assets: NEVER migrate or modify
 ├─ work/<run-id>/
-│  ├─ transcription.jsonl             # Phase 3 evidence and failures
-│  ├─ style_predictions.jsonl         # Phase 4 evidence
-│  └─ review_queue.csv                # Pending decisions, not final exports
+│  ├─ transcription.jsonl             # Optional ASR evidence when requested
+│  ├─ style_predictions.jsonl         # LV-R04 candidates/unknown + offsets, model versions
+│  ├─ qc_results.jsonl                # LV-R06 identity / recording quality evidence
+│  ├─ review_queue.csv                # Pending decisions, not final exports
+│  └─ review_decisions.jsonl          # Human approvals/rejections/deferred (proposed contract)
 └─ outputs/datasets/<profile>/<version>/
    ├─ README.txt                       # Japanese guide, label/emoji mapping, selection tips
    ├─ index.csv                        # Human-readable search/index (UTF-8 with BOM for Excel)
@@ -67,15 +75,22 @@ These directories are examples of the *final schema*, not directories to create 
 
 ## Clip and review rules
 
-1. Classify **segments**, not entire multi-minute streams or mixed-event WAVs as a single expression. Preserve source audio and segment start/end offsets. If clipping would remove important phonetic/respiratory context, leave an intact clip with secondary tags or queue for review rather than cutting blindly.
-2. One clip has one **human-approved primary category** for directory placement and zero or more secondary labels. When `通常会話` and `笑い` coexist, pick a dominant class **only if audibly justified**. Otherwise queue for review; never copy the same WAV into several categories silently.
-3. Candidate classes and `confidence` are not approvals. Missing/unsupported confidence is `null`, not a fabricated score. Keep `unknown`, `requires_review`, rejected and non-voice/foreign-speaker clips **out of the promoted folders**, in the corresponding run's review/evidence area only.
-4. Each exported audio file has a stable neutral filename (not a generated descriptive claim), and `index.csv` provides original source, Japanese transcript when intelligible, primary Japanese label/emoji, secondary tags, length and listening notes. Avoid raw emoji in the actual filenames to keep cross-tool compatibility.
-5. `manifest.jsonl` records source WAV path and SHA-256, original acquisition/run identity, segment offsets, output SHA-256/path, speech/transcription status, transcript or null, primary and secondary label codes, mapped emoji, model/config/taxonomy revisions, reviewer decision, and approval provenance.
+1. Classify **real WAV segments**, not entire multi-minute streams or mixed-event WAVs as a single expression. Preserve the original audio, source SHA, segment IDs and start/end offsets. If clipping would remove essential vocal/breath context, retain the intact clip with tags or queue for review rather than cutting blindly. All 1,167 candidates must receive a classification/QC/unknown/failure evidence row, not forced approval.
+2. Each **promoted** clip has one human-approved primary category for directory placement and zero or more secondary labels. For mixed ordinary speech/laughter, choose a dominant class **only with audible evidence and approval**; otherwise queue for review. Do not silently duplicate the same WAV across several folders.
+3. Acoustic candidate labels, model confidence and mechanical WAV validity are **not approvals**. Missing/unsupported confidence is `null`, never fabricated. Identity (speaker), QC (recording quality), style and reviewer decision are separate fields. Keep `unknown`, `requires_review`, rejected, QC-failed and non-target-speaker audio **out of promoted folders**, with review/evidence and the reason retained. Preserve existing genuine human approval provenance; do not infer it for automatically collected `my_voice`.
+4. Each exported audio file has a stable neutral filename (not a generated descriptive claim). `index.csv` (UTF-8 with BOM for Excel) provides original source, optional Japanese transcript **only when available**, primary Japanese label/emoji, secondary tags, duration, identity/QC/review status and listening notes. A missing transcript never excludes an otherwise approved nonverbal reference WAV. Avoid raw emoji in filenames for cross-tool compatibility.
+5. `manifest.jsonl` records source WAV path and SHA-256, original acquisition/run/provenance, original clip/segment offsets, output SHA-256/path, independent speaker-identity decision, QC outcomes, primary/secondary acoustic labels, mapped emoji, model/config/taxonomy revisions, reviewer decision and approval provenance; optional ASR speech/transcript fields may be null. Keep failure and unresolved evidence in `work/<run-id>/`, with every input accounted for.
 6. Do not change files under `data/`; published versions are immutable. On collision, refuse to overwrite and require a new version. Do not put LocalVoice scripts or exported library under `Irodori-TTS/`.
 7. Allow manual playback and category browsing **without dependency on Notion, model downloads, or a custom browser UI**. `README.txt` explains that Irodori Palette controls inference, not category selection.
-8. An acceptance test must walk a **real archive → speaker check → ASR → style review → export → pick WAV in VoiceDesign** flow. Check category correctness and ease of human browsing, not merely JSON validity.
+8. **Library v1 acceptance** walks a real existing-WAV subset → acoustic classification candidates → separate identity/QC review → reviewer approval → new Japanese-category folder/index/manifest → Explorer playback and manual reference upload in VoiceDesign. Verify provenance, per-input processing states, non-destructive reads, and that ambiguous/unapproved material is excluded. A real new-archive ingestion E2E belongs to **later LV-R07**; full ASR/CER testing or Irodori automation is not a v1 gate.
 
-## Scope gate
+## Library v1 acceptance gate and non-scope
 
-Phase 3 must define compatible speech/non-speech output so Phase 4 can classify events. **Phase 3 does not auto-sort WAVs into final Emoji Palette folders.** Phase 4 owns acoustic classification; Phase 5 owns the human-browsable folder export. Do not build shortcut scripts or premature classifier scaffolding while designing ASR.
+- **Input coverage:** inventory all existing 1,167 candidate WAVs in `data/training_audio/Ui_Shigure/audio/` without editing them; emit a versioned, auditable classification/QC/unknown/failure record for each.
+- **Acoustic validation:** freeze primary taxonomy and evaluate on a small independently **human-annotated real audio** set before batch classification. Track class confusions, unclear mixed events and conservative abstentions. An ASR transcript cannot substitute for this.
+- **Reviewer protection:** valid identity + QC + human-approved primary style are all necessary before a WAV/segment is copied into the library. Suspect foreign/game voices, poor audio, ambiguous style, errors and review backlog stay outside promoted folders.
+- **Human usability:** new immutable `outputs/datasets/<profile>/<version>/audio/<Japanese-category>/` folders for **populated** categories, `README.txt`, `index.csv` and `manifest.jsonl`, playable in Explorer without Notion/Python or a custom browser. Manually pick at least one published WAV in official VoiceDesign to validate compatibility.
+- **Data safety:** no writes to existing `data/`, no changes inside `Irodori-TTS/`, no overwriting previous output versions. Run manifests retain source hashes, offsets, QC, classification and approval provenance; no silent duplication or deletion.
+- **Out of scope for v1:** 48-sample **ASR** accuracy comparison, complete ASR transcription, new-stream archive E2E (LV-R07), automated VoiceDesign operations and LoRA training. These are **not** blockers for LV-R04/06/05. Test the actual archive-to-library pathway in LV-R07 after library v1.
+
+Phase 3 Pilot must not auto-sort WAVs based on transcript text. LV-R04 owns acoustic candidates, LV-R06 owns identity/QC/reviewer evidence, and LV-R05 owns approved versioned library export. The ASR result may be included as optional metadata only.
