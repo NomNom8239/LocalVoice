@@ -87,7 +87,7 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 
 - **Phase 1:** baseline code retains archive acquisition and speaker/dataset processing; old independent LoRA files are excluded.
 - **Phase 2:** official Irodori-TTS installed independently, GPU works, and reference-audio VoiceDesign generation succeeds.
-- **Phase 3:** approve transcription IO schema and model choices first; implement **only** `src/localvoice/transcription/`, a single CLI integration, and matching tests. Distinguish speech/non-speech/uncertain events for later classification; **do not** classify Emoji Palette styles at this stage. Existing `data/` is read-only to this stage.
+- **Phase 3:** follow [Phase 3 Japanese ASR contract](PHASE3_JAPANESE_ASR.md): approve model/backend selection after real-data pilot, frozen evaluation, and input/output schema **before** implementation. Implement **only** `src/localvoice/transcription/`, one CLI integration, and matching tests. Distinguish speech/non-speech/uncertain events for later classification; **do not** classify Emoji Palette styles at this stage. Existing `data/` is read-only to this stage.
 - **Phase 4:** approve style-label taxonomy (including distinguishable Emoji Palette-aligned categories and human review) separately; implement `src/localvoice/style/` and corresponding tests.
 - **Phase 5:** export reviewed clips into versioned **human-browsable Japanese category folders** under `outputs/datasets/<profile>/<version>/audio/` (normal conversation, whisper, laughter, moans, breathlessness, etc.) with CSV/JSONL index. Verify real end-to-end provenance, error handling, ease of manual use and non-modification of existing inputs.
 
