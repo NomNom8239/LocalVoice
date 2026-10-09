@@ -1,5 +1,7 @@
 # AST音声レビューCSV → カテゴリ修正版ライブラリv2
 
+> **2026-10-09 現行運用との関係：** この文書は、既存のv1 AST候補をWAV付きv2へ**一度だけ複製して生成した際の記録・再現手順**です。実機でv2（1,167件、レビュー適合100・要確認5・未レビュー1,062）まで作成済みで、分類フェーズはv2で締めています。今後の新しい手動分類v3以降は、この`apply-review`を再実行せず、[共通レビューHTML](../localvoice_ast_candidate_reviewer.html) ＋ [`style-batch metadata revise`](VERSIONED_AUDIO_METADATA.md) で**メタデータだけ**更新してください。初回v1→v2も、WAVコピーを避けたい場合はv1を`metadata archive`してから`metadata revise`を使用できます。
+
 **対象：** 既存の `localvoice_ast_candidate_reviewer.html` から出力した
 `localvoice_ast_review_decisions_v1.csv` を、完成済みAST候補ライブラリv1に適用する。
 
@@ -123,8 +125,7 @@ Get-Content "$v2\summary.json" -Raw -Encoding UTF8
 ```
 
 保存途中の一時フォルダがある場合は、**同一内容のCSVでのみ再開**できる。
-既存の完成済みv2には上書きしない。レビュー内容を追加・変更したらv3などの
-新バージョンを指定する。元WAV・v1・runの分類証跡を削除しない。
+既存の完成済みv2には上書きしない。このWAVコピー方式を今後のv3以降の履歴更新に使わない。レビュー内容を追加・変更したら `metadata revise` で新しいメタデータ版を作る。元WAV・AST run・履歴は保全する。
 
 ## 実装の境界
 
