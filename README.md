@@ -6,7 +6,7 @@
 
 **必読： [ディレクトリ責務・追加ルール](docs/PROJECT_LAYOUT.md)** — `data/` 保全、公式Irodoriへの独自ファイル追加禁止、新規コード・一時出力・成果物の保存先を定義しています。下記のパイプラインとパス説明は、既存の取得・RVC処理についての説明です。
 
-**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。現在は設計/モデル評価段階で、ASR実装は未着手です。
+**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**12音声Pilotの実装は `feature/phase3-asr-pilot` にあり、実機GPU未検証です。** [Windows Pilot実行手順](docs/ASR_PILOT_RUNBOOK.md) を参照。全件ASRの実装やモデル採用はまだ行っていません。
 
 ## Pipeline
 
