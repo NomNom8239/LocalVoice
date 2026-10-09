@@ -262,7 +262,7 @@ def run(profile: str, run_id: str, expected_count: int | None, device: str,
         state.update({"status": "failed_initialization",
                       "initialization_error": f"{type(exc).__name__}: {exc}",
                       "updated_at": _now()})
-        pilot._jsonl_write(target / "failures.jsonl",
+        pilot._jsonl(target / "failures.jsonl",
                            {"failure_kind": type(exc).__name__, "reason": str(exc)})
         _atomic_json(target / "run_manifest.json", state)
         print(f"AST BATCH MODEL FAILED: {exc}", file=sys.stderr)
@@ -297,9 +297,9 @@ def run(profile: str, run_id: str, expected_count: int | None, device: str,
             result.update({"status": "error", "category_dir": UNKNOWN_DIR,
                            "category_code": None, "category_score": None,
                            "failure_reason": f"{type(exc).__name__}: {exc}"})
-            pilot._jsonl_write(target / "failures.jsonl",
+            pilot._jsonl(target / "failures.jsonl",
                                {"source_id": row["source_id"], "failure_reason": result["failure_reason"]})
-        pilot._jsonl_write(results_path, result)  # durable per-item resume point
+        pilot._jsonl(results_path, result)  # durable per-item resume point
         recorded[row["source_id"]] = result
         state.update({"processed": len(recorded), "remaining": len(rows) - len(recorded),
                       "updated_at": _now(), "status": "running"})
