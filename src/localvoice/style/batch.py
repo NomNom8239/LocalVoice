@@ -59,14 +59,32 @@ def _write_new(path: Path, value: str) -> None:
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     temporary = path.with_name(path.name + ".writing")
-    if temporary.exists() or temporary.is_symlink():
-        raise ValueError(f"Unexpected pending state file: {temporary}")
+    if temporary.is_symlink():
+        raise ValueError(f"Linked pending state file: {temporary}")
+    # A crash can leave our own .writing file. Resume may safely discard it,
+    # but never touch sources or another run.
+    if temporary.exists():
+        if not temporary.is_file():
+            raise ValueError(f"Unexpected pending state path: {temporary}")
+        temporary.unlink()
     try:
         _write_new(temporary, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
         os.replace(temporary, path)
     finally:
         if temporary.exists():
             temporary.unlink()
+
+
+def _stage_text(path: Path, value: str, *, resume: bool, encoding: str = "utf-8") -> None:
+    """Metadata only: allow rebuilding our own incomplete stage when resuming."""
+    if path.is_symlink() or (path.exists() and (not resume or not path.is_file())):
+        raise ValueError(f"Unexpected staged metadata: {path}")
+    if path.exists():
+        with path.open("w", encoding=encoding, newline="") as out:
+            out.write(value)
+    else:
+        with path.open("x", encoding=encoding, newline="") as out:
+            out.write(value)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -186,7 +204,9 @@ def run(profile: str, run_id: str, expected_count: int | None, device: str,
         if (frozen != rows or state.get("input_sha256") != digest or
             state.get("schema_version") != SCHEMA or state.get("profile") != profile or
             state.get("device_requested") != device or
-            state.get("min_score") != min_score or state.get("top_ratio") != top_ratio):
+            state.get("min_score") != min_score or state.get("top_ratio") != top_ratio or
+            state.get("run_id") != run_id or state.get("model_id") != pilot.MODEL_IDS["ast"] or
+            state.get("samples") != len(rows)):
             raise ValueError("Input inventory or configuration changed; resume blocked")
     else:
         if target.exists() or target.is_symlink():
@@ -386,11 +406,16 @@ def export(run_id: str, version: str, resume: bool) -> Path:
             "ast_score": prediction["category_score"] if prediction["category_score"] is not None else "",
             "review": "UNVERIFIED", "reason": prediction.get("failure_reason") or prediction.get("reason") or "",
         })
-    _write_new(stage / "manifest.jsonl", "".join(_json(x) + "\n" for x in manifests))
-    with (stage / "index.csv").open("x", encoding="utf-8-sig", newline="") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(index_rows[0]))
-        writer.writeheader()
-        writer.writerows(index_rows)
+    _stage_text(stage / "manifest.jsonl",
+                "".join(_json(x) + "\n" for x in manifests), resume=resume)
+    import io
+
+    index_buffer = io.StringIO(newline="")
+    writer = csv.DictWriter(index_buffer, fieldnames=list(index_rows[0]))
+    writer.writeheader()
+    writer.writerows(index_rows)
+    _stage_text(stage / "index.csv", index_buffer.getvalue(), resume=resume,
+                encoding="utf-8-sig")
     readme = (
         "ASTによる暫定分類ライブラリ（未確認）\n"
         "================================\n"
@@ -403,14 +428,14 @@ def export(run_id: str, version: str, resume: bool) -> Path:
         f"分類別件数={_json(dict(sorted(counts.items())))}\n"
         "詳細・原本SHA・失敗理由は index.csv と manifest.jsonl を参照。\n"
     )
-    _write_new(stage / "README.txt", readme)
-    _write_new(stage / "summary.json", json.dumps({
+    _stage_text(stage / "README.txt", readme, resume=resume)
+    _stage_text(stage / "summary.json", json.dumps({
         "schema_version": SCHEMA, "tier": "UNVERIFIED_AST_CANDIDATE",
         "profile": profile, "run_id": run_id, "version": version,
         "source_count": len(inventory), "counts": dict(sorted(counts.items())),
         "input_sha256": state["input_sha256"], "model_id": state["model_id"],
         "model_revision": state["model_revision"],
-    }, ensure_ascii=False, indent=2) + "\n")
+    }, ensure_ascii=False, indent=2) + "\n", resume=resume)
     stage.rename(final)  # atomic publication only after all WAVs + indexes exist
     print(f"EXPORTED UNVERIFIED candidates: {final} ({len(inventory)} WAVs; input files unchanged)")
     return final
