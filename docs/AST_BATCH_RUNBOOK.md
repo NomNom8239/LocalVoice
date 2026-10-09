@@ -77,6 +77,32 @@ Get-Content ".\work\$runId\style_predictions.jsonl" -Encoding UTF8 | ForEach-Obj
 
 中断した場合は同じ --resume を再実行する。すでに結果のあるWAVは再処理しない。入力WAVや設定が途中で変化した場合は安全のため中断。ステータスが completed または completed_with_errors になれば、1,167件に対応する分類/保留/失敗証跡が揃っている。
 
+## Windowsでの run_manifest.json 更新ロック（WinError 5/32）
+
+`run_manifest.json.writing -> run_manifest.json` の置換がWindowsで拒否される場合は、**モデル推論ではなくチェックポイント書き込みの問題**。他アプリ、同期クライアント、セキュリティソフトなどが一時的にファイルを掴んでいる可能性がある。原因が確定するまでファイルやrunフォルダを削除しない。
+
+2026-10-09修正：既存runの`style_predictions.jsonl`を保存したまま、チェックポイント置換でPermissionErrorが起きた場合の**最大8回の短い待機・再試行**と、通常実行中の更新を**25件ごと**へ変更した。推論結果は引き続き各WAVごとにJSONLへ追記・クローズされ、`--resume`では結果行を再読込して既処理を飛ばす。`run_manifest.json`の`processed`や`status`は中断後に直近の状態より古い場合があるため、`style-batch summary`に表示される処理済み件数を確認する。
+
+必ず修正コミットを取得してから、**既存run IDのまま**再開する。
+
+~~~powershell
+cd F:\AIProjects\LocalVoice
+git pull --ff-only origin feature/phase4-acoustic-pilot
+.\.venv\Scripts\python.exe -m pytest tests/test_asr_pilot.py tests/test_style_pilot.py tests/test_style_batch.py -q
+
+$runId = "ast_batch_20261009_163035451"
+.\.venv\Scripts\python.exe -m localvoice style-batch summary --run-id $runId
+.\.venv\Scripts\python.exe -m localvoice style-batch run --profile Ui_Shigure --expected-count 1167 --run-id $runId --device cuda --resume
+~~~
+
+修正後も繰り返しロックされる場合は**一旦停止**し、次の読み取り専用診断結果を確認する。手動で`.writing`や`style_predictions.jsonl`を削除しない。アクセス権や同期/監視の問題は原因を確認してから対処し、セキュリティソフトを無差別に停止させない。
+
+~~~powershell
+Get-ChildItem ".\work\$runId" -Force -Filter "run_manifest.json*" |
+  Select-Object Name, Length, Attributes, LastWriteTime
+.\.venv\Scripts\python.exe -m localvoice style-batch summary --run-id $runId
+~~~
+
 ## STEP 4：件数確認と暫定フォルダの出力
 
 ~~~powershell
