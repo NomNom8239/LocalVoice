@@ -231,7 +231,9 @@ q                                   # Bank生成せず安全に中断
 .\.venv\Scripts\python.exe .\scripts\localvoice.py --profile New_Speaker --resume-bootstrap "<元のrun-name>"
 ~~~
 
-この方法は既存 `data/runs/<profile>/<run-name>/bootstrap/previews/` を再利用して、既存runの分類結果がない場合に限りBank生成と本人声分類を続行します。**以前の話者分離結果を永続保存していないため、再開時の本人声分類ではpyannoteを1回再実行**します。過去の実行で元から`--vocals`を指定していた場合は、追加で`--resume-vocals "<同じVocals.wavのパス>"`を渡してください。通常の`--url`/`--wav`実行なら保存済み`separated/`のVocalsを自動使用します。
+この方法は既存 `data/runs/<profile>/<run-name>/bootstrap/previews/` を再利用し、**確認したクリップからReference Bankだけを生成して終了**します。**再ダウンロード・audio-separator・アーカイブ全体のpyannote再実行・SELF/REVIEW/OTHER分類は行いません。** 既存の話者分離結果は中断前に保存されていないため、後続の全編分類を実行するには別途pyannoteの再実行が必要になります。
+
+**全編分類が必要な場合だけ**、`--resume-bootstrap` に `--classify-after-bootstrap` を追加できます。ただし**これを指定すると2時間以上かかる可能性のあるpyannoteを全編再実行**します。元が `--vocals` 入力の場合は `--resume-vocals "<元のVocals.wav>"` も必要です。Bankのみを先に作成した後は既存Bank保護により同じresumeコマンドで全編分類はできません。意図しない長時間処理を避けるため、今回の再開ではオプションを追加しないでください。
 
 **安全上の制約：** 初回Bankの音声はまだ暫定基準であり、すべての分類結果の本人性や最終QCを保証しません。`self_reference_bank.npz`/`self_reference_bank.json`の不整合や既存Bankは上書きしません。`--force`は既存runを削除するため使わず、再開には`--resume-bootstrap`を使用します。別ラベル＝他人と自動でnegativeにはしません。本人以外の確実なWAVがある場合だけ、`calibrate_threshold.py`で別途閾値校正します。
 
