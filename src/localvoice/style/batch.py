@@ -488,6 +488,13 @@ def main(argv: list[str] | None = None) -> int:
     promote.add_argument("--run-id", required=True)
     promote.add_argument("--version", required=True)
     promote.add_argument("--resume-export", action="store_true")
+    review = sub.add_parser("apply-review", help="Apply browser review CSV to a new candidate version")
+    review.add_argument("--run-id", required=True)
+    review.add_argument("--review-csv", required=True, type=Path)
+    review.add_argument("--source-version", default="v1")
+    review.add_argument("--version", default="v2")
+    review.add_argument("--dry-run", action="store_true")
+    review.add_argument("--resume-export", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "inventory":
@@ -497,6 +504,14 @@ def main(argv: list[str] | None = None) -> int:
                        args.min_score, args.top_ratio, args.max_new, args.resume)
         elif args.command == "summary":
             print(json.dumps(summary(args.run_id), ensure_ascii=False, indent=2))
+        elif args.command == "apply-review":
+            from .review_export import apply_review
+
+            report = apply_review(args.run_id, args.review_csv, args.source_version,
+                                  args.version, args.dry_run, args.resume_export)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            if not args.dry_run:
+                print(f"REVIEW CANDIDATE EXPORTED: {args.version}; originals unchanged")
         else:
             export(args.run_id, args.version, args.resume_export)
         return 0
