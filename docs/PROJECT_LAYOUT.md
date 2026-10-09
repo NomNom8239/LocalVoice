@@ -15,7 +15,7 @@ Scope: directory and non-destructive write contracts. The current MVP is a human
 | `Irodori-TTS/` | **Upstream** Irodori-TTS standalone Git clone and runtime | Ignored by LocalVoice | Do not add LocalVoice code, patches, tools, LoRA experiments, or custom datasets inside. Normal upstream-managed `.venv/`, `gradio_outputs_voicedesign/`, and caches may appear. |
 | `.venv/` | Existing LocalVoice acquisition/processing Python runtime | Ignored | No extra environments without a documented dependency conflict. Irodori uses its own `Irodori-TTS/.venv/`. |
 | `work/` | Per-run intermediate outputs, ASR Pilot evidence, classification/QC/review candidates | Ignored | Create a fresh run ID; never overwrite another run or `data/`. Save failure/unknown/review records; do not automatically wipe contents. |
-| `outputs/` | Promoted, human-approved versioned reference WAV libraries and optional other deliverables | Ignored | Copy only identity/QC/style-approved audio; publish immutable versioned deliveries and never silently replace or delete. |
+| `outputs/` | Versioned unverified candidate-browsing library **and separate** human-approved reference WAV libraries | Ignored | Keep `outputs/candidates/` visibly UNVERIFIED and `outputs/datasets/` approved only. Never overwrite versions, alter original WAVs, or silently relabel unverified outputs as approved. |
 | `cache/` | **Optional** disposable model/tool caches explicitly configured for this project | Ignored | Prefer tool defaults outside the source tree; never place cache files in `scripts/`, `src/`, or the upstream repository as custom additions. |
 | `start_irodori_voicedesign.bat` | LocalVoice launch entry point for upstream WebUI | Currently local/untracked | May be versioned after checking for machine-specific paths; never store the launcher within upstream. |
 | `config.toml` | Existing pipeline settings and legacy data-root mapping | Tracked | Do not repurpose legacy keys or change their meanings to implement new stages. |
@@ -83,6 +83,17 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 6. Never modify upstream Irodori-TTS files to compensate for a LocalVoice issue. Keep launch/integration glue in LocalVoice, and use the upstream UI as shipped. The official UI may generate `Irodori-TTS/gradio_outputs_voicedesign/`; copy any audio worth retaining into `outputs/tts/` before a future reinstall.
 7. A proposed new module, CLI entry point, environment, or output directory needs a documented purpose and an owner in this table. If an existing location owns the responsibility, extend that implementation rather than adding another file.
 8. **Library v1 acceptance:** verify a real existing WAV subset from candidate → acoustic classification → independent identity/QC → targeted human review → versioned Japanese category folder → playback and manual selection in upstream VoiceDesign. Confirm read-only `data/`, preserved unknown/rejections, manifest provenance and immutable outputs. Full new archive-to-dataset E2E is a **later LV-R07 task**, not the current library v1 gate. Isolated module tests do not substitute for this existing-WAV E2E.
+
+## Execution priority clarification: AST best-effort browse first (2026-10-09)
+
+AST is the sole required model for the first batch. The **first useful output** is an explicitly **unverified** category-browsing set for all 1,167 existing WAVs; no dependency on CLAP comparisons, perfect whisper/sigh/moan distinction, all-item human approval, full ASR or fine segmentation. If a class is unsupported/ambiguous, place it under `99_未分類_要確認` and keep the evidence.
+
+- Provisional candidate output owner: `outputs/candidates/<profile>/<version>/`, **marked unverified** with an Excel-compatible index and provenance. It may contain unchecked/low-quality samples and must never be presented as reviewed or clean. It is still read-only-copy output; it must not touch `data/` or the upstream Irodori checkout.
+- Human-approved output owner (separate): `outputs/datasets/<profile>/<version>/`. Identity/QC/style reviewer gates remain mandatory **only for this certified area**.
+- All 1,167 candidate sources must produce a category/unknown/error audit row before the initial candidate-library run is considered complete, but uncertain source WAVs need not be listened to before the preliminary category folders are browsable.
+- Source integrity, collision protection, explicit failure evidence, and honest candidate/approved labeling are always required. Model-performance perfection is **not** a blocking gate.
+
+This supersedes any below wording that implies the **initial candidate-browse library** must wait for full reviewer approval. See [two-tier output contract](EMOJI_AUDIO_DATASET.md).
 
 ## Current MVP, phase gates and dependencies (2026-10-09)
 
