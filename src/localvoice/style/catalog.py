@@ -427,8 +427,40 @@ def materialize(profile: str, version: str, output_name: str, *,
                 raise ValueError(f"Materialized WAV checksum mismatch: {entry['source_id']}")
             pending.rename(target)
     version_root = _version_dir(profile, version)
-    for filename in ("manifest.jsonl", "index.csv", "summary.json", "receipt.json"):
+    for filename in ("manifest.jsonl", "index.csv"):
         _write_file(stage / filename, (version_root / filename).read_bytes())
+    result_summary = json.loads((version_root / "summary.json").read_text(encoding="utf-8"))
+    result_summary.update({
+        "tier": "UNVERIFIED_MATERIALIZED_CANDIDATE",
+        "audio_files_stored": len(entries),
+        "materialized_from_metadata_version": version,
+    })
+    _write_file(stage / "summary.json", (
+        json.dumps(result_summary, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8"))
+    _write_file(stage / "version_receipt.json", (version_root / "receipt.json").read_bytes())
+    _write_file(stage / "README.txt", (
+        "LocalVoice メタデータ履歴から再生成した音声候補フォルダ（未承認）\n"
+        f"profile={profile} / version={version} / run={receipt['run_id']}\n"
+        f"WAV count={len(entries)} / 元WAVをSHA256で照合してコピー\n"
+        "原本・分類履歴は変更せず、正式なoutputs/datasetsへの昇格ではありません。\n"
+        "要確認96_・保留97_・除外98_は使用対象ではありません。\n"
+    ).encode("utf-8"))
+    statuses = Counter(e.get("review_status", "unreviewed") for e in entries)
+    if any(k in statuses for k in ("reviewed_usable", "needs_attention", "held", "rejected")):
+        for filename, allowed in (
+            ("reviewed_usable.csv", {"reviewed_usable"}),
+            ("needs_attention.csv", {"needs_attention", "held", "rejected"}),
+        ):
+            selected = [e for e in entries if e.get("review_status") in allowed]
+            rows = [{k: e.get(k, "") for k in INDEX_COLUMNS} for e in selected]
+            _write_file(stage / filename, (
+                "\ufeff" + review_export._csv_text(rows, INDEX_COLUMNS)
+            ).encode("utf-8"))
+    for filename in ("review_decisions.csv", "review_state.json"):
+        stored = version_root / "review" / filename
+        if stored.is_file() and not stored.is_symlink():
+            _write_file(stage / "review" / filename, stored.read_bytes())
     stage.rename(destination)
     report["path"] = str(destination)
     return report
