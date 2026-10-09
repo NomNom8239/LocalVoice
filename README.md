@@ -217,7 +217,7 @@ python .\scripts\calibrate_threshold.py `
   --negative-source ".\data\diarization\negative"
 ```
 
-### YouTube から対象話者を自動抽出
+### 配信アーカイブURLから対象話者を抽出（yt-dlp）
 
 ```powershell
 python .\scripts\localvoice.py `
@@ -225,7 +225,19 @@ python .\scripts\localvoice.py `
   --url "https://www.youtube.com/watch?v=..."
 ```
 
-既存 WAV:
+**`--url` はYouTube専用ではありません。** コードは `yt-dlp` から媒体の `id` を取得し、`bestaudio/best` でダウンロードするため、TwitchやBilibiliなども **yt-dlpがそのURLを取得できる場合に限り**使用できる構造です。ただし**YouTube以外の実機E2Eは未検証**。認証・配信終了・地域制限・DRM・サイト仕様変更で取得に失敗することがあります。プレイリストの一括処理は `--no-playlist` により対象外です。
+
+取得できるかの事前確認（音声をダウンロードしない）：
+
+```powershell
+yt-dlp --no-playlist --skip-download --print "%(extractor_key)s / %(id)s" "https://example.com/your-archive"
+```
+
+**現状のURL実装の制約：** 取得時の `id` はサイトを含まないため、異なるサイトで同じ動画IDを持つ場合 `data/source/<id>/` と `data/wav_master/<id>.wav` の既存ファイルを**誤再利用する可能性があります**。`--run-name` で実行フォルダだけを変えても、この問題は解消しません。別サイトの一括収集を本格運用する前に、保存キーへ媒体名/URL由来識別子を含める改修と実機E2E（LV-R07）が必要です。
+
+同じrun名が既存の場合は停止します。**`--force` は既存の `data/runs/<profile>/<run-name>` を削除するので、通常は使用しないでください。** 別アーカイブとして実行する場合は、重複しない `--run-name` を指定できます（ただし上記のソースID衝突対策ではありません）。
+
+ローカルの既存音声WAV（元動画は先にFFmpeg等で音声WAVへ変換）:
 
 ```powershell
 python .\scripts\localvoice.py `
@@ -240,6 +252,8 @@ python .\scripts\localvoice.py `
   --profile Toto_Kogara `
   --vocals ".\path\to\Vocals.wav"
 ```
+
+**事前条件：** 指定したprofileの `data/reference_bank/<profile>/self_reference_bank.npz` が必要です。モデル、`yt-dlp`、FFmpeg、`audio-separator`、話者照合を行うPython環境も必要。初めて使うprofileはReference Bankの構築と判定閾値の確認を済ませてください。ここまでで生成されるのは**話者ごとに分割した未整理の候補クリップ**であり、ASTの日本語カテゴリ分類はまだ実行されません。
 
 分類結果:
 
@@ -305,6 +319,26 @@ python .\scripts\review_training_audio.py `
 `n` が「感情声ではない」として判断済みの記録になります。
 `n` のクリップは `review_rejected/` へコピーせず、通常学習素材にも自動追加しません。
 `--limit` を使えば100件ずつなどの単位で進められます。
+
+### 新しいアーカイブから素材を追加する時の実行順
+
+**取得と素材の蓄積はコマンドから可能ですが、全工程を1コマンドで連結する実装ではありません。**
+
+1. `localvoice.py --url`（または `--wav`, `--vocals`）で取得→必要ならVocals分離→話者分離→SELF/REVIEW/OTHER判定。各runの `classification.tsv` と `my_voice/` の音源を確認。
+2. `review_training_audio.py --profile <profile>` で `review/`、`review_unscored/` を必要な範囲だけ再生し、本人声・極端な声を採用/保留/却下。
+3. `collect_training_audio.py --profile <profile> --dry-run` で**追加候補と重複・失敗件数を検査**。問題がなければ `--dry-run` を外して `data/training_audio/<profile>/audio/` へ収集。
+4. **必要に応じて別途** ASTの新run分類と、共通HTMLでのレビュー/メタデータ版更新を行う。既存の `Ui_Shigure` v2へ自動合流する仕組みは未実装。新規アーカイブを含むフルE2Eは後続のLV-R07で扱う。
+
+```powershell
+$profile = "Toto_Kogara"
+python .\scripts\localvoice.py --profile $profile --url "https://www.youtube.com/watch?v=..."
+python .\scripts\review_training_audio.py --profile $profile
+python .\scripts\collect_training_audio.py --profile $profile --dry-run
+# dry-runの追加候補・重複・失敗を確認してから
+python .\scripts\collect_training_audio.py --profile $profile
+```
+
+**重要：** `collect_training_audio.py` は、話者判定で `SELF` となった `my_voice/` を人手承認なしで収集対象にします。 `review_approved/` と `review_emotion/` は手動採用分だけを収集し、`review/`・`review_unscored/`・`rejected/` は自動採用しません。音声内容で重複排除しますが、話者本人性と録音品質の最終保証はありません。素材蓄積と`outputs/datasets/`への正式承認を混同しないでください。
 
 ### 学習素材を蓄積
 
