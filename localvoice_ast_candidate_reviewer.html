@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LocalVoice — AST分類候補の試聴・レビュー</title>
+<style>
+:root{color-scheme:dark;--bg:#101722;--panel:#1a2432;--panel2:#222f41;--border:#39475a;--text:#ecf2f8;--muted:#a9b9cc;--cyan:#76d5d8;--green:#70d6a2;--amber:#ffcf80;--red:#fa959c}
+*{box-sizing:border-box}body{margin:0;font:15px/1.65 "Segoe UI","Yu Gothic UI",sans-serif;background:var(--bg);color:var(--text)}main{max-width:1250px;margin:0 auto;padding:28px 24px 80px}h1{font-size:26px;letter-spacing:-.02em;margin:0 0 5px}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:16px 0 7px}p{margin:6px 0 13px}small,.muted{color:var(--muted)}.intro{max-width:900px;color:var(--muted)}.panel{border:1px solid var(--border);background:var(--panel);padding:19px;border-radius:13px;margin-top:18px}.section-title{display:flex;justify-content:space-between;align-items:center;gap:15px}.step{font-size:12px;background:var(--panel2);color:var(--cyan);padding:3px 9px;border-radius:100px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}.instructions{background:#11212a;border-left:3px solid var(--cyan);padding:11px 14px;border-radius:5px;color:#d4eff0}.warning{border-left:3px solid var(--amber);padding:8px 11px;background:#29261f;color:#ffe5bb}.hint{font-size:12px;color:var(--muted)}button,select,input{font:inherit}button{border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:9px;padding:9px 13px;cursor:pointer}button:hover{border-color:var(--cyan)}button:disabled{opacity:.4;cursor:default}button.primary{border-color:#319fa5;background:#096e79;color:white;font-weight:650}button.ghost{background:transparent}button.selected{background:#195761;border:2px solid var(--cyan);padding:8px 12px}button.warn{border-color:#93684c}select,input[type=text],input[type=search]{border:1px solid var(--border);background:#0f1926;color:var(--text);border-radius:7px;padding:9px;width:100%;min-width:0}label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}input[type=file]{width:100%;max-width:100%;font-size:13px}input[type=file]::file-selector-button{background:#1a6570;color:white;border:0;border-radius:5px;padding:9px;margin:4px;cursor:pointer}.info-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.info{background:#101c29;border:1px solid #304256;border-radius:7px;padding:12px}.info b{display:block;color:var(--cyan);font-size:23px}.line{height:1px;background:var(--border);margin:16px 0}.hidden{display:none!important}.tags{display:flex;flex-wrap:wrap;gap:8px}.tag{font-size:12px;border:1px solid var(--border);padding:6px 9px;border-radius:9px;background:#111d29}.tag b{color:var(--cyan)}.badge{display:inline-block;font-size:12px;background:#243449;padding:2px 9px;border-radius:10px;margin-right:6px;color:#cfe5fa}.player audio{width:100%;margin:10px 0}.filetitle{font-family:Consolas,monospace;font-size:13px;overflow-wrap:anywhere;color:#e7f4ff}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px}.toolbar button{white-space:nowrap}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.flex{flex:1}.styles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.styles button{text-align:left;min-height:76px;font-size:14px}.styles button small{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}.pilots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.pilots button{text-align:left;padding:13px;min-height:92px}.pilots button small{display:block;color:var(--muted)}.pilots button strong{font-size:15px}.pilots button .counter{float:right;color:var(--cyan)}.footnote{color:var(--muted);font-size:12px}.message{white-space:pre-wrap;background:#11242b;border:1px solid #32656b;padding:10px 12px;border-radius:7px;margin:13px 0;color:#c9f4ef}.message.error{background:#2e1a22;border-color:#944757;color:#ffc1ca}.scope{margin-top:8px;padding:8px 12px;color:#bdcddd;font-size:12px}.overview{display:flex;gap:10px;flex-wrap:wrap}.overview span{padding:3px 8px;border-radius:6px;background:#101e2a;font-size:12px}.inputhint{display:block;font-size:12px;margin-top:6px;color:var(--muted)}kbd{background:#263347;border:1px solid #52637b;padding:1px 5px;border-radius:4px;color:white;font:12px Consolas,monospace}a{color:#9be1eb}ul{padding-left:20px}.filepickers{display:grid;grid-template-columns:1fr 1fr;gap:12px}.exportButtons{display:flex;gap:10px;flex-wrap:wrap}.previewdetails{color:var(--muted);font-size:12px}details summary{cursor:pointer;color:var(--cyan);font-weight:600}@media(max-width:900px){.styles{grid-template-columns:repeat(2,1fr)}.pilots,.info-list,.grid3{grid-template-columns:repeat(2,1fr)}.grid2,.filepickers{grid-template-columns:1fr}}@media(max-width:500px){main{padding:20px 12px}.styles,.pilots,.info-list,.grid3{grid-template-columns:1fr}.panel{padding:12px}}
+
+:root{--purple:#acafff} .headertop{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.headertop h1{flex:1}.chip{display:inline-flex;gap:5px;align-items:center;border:1px solid #46556a;padding:4px 9px;border-radius:30px;font-size:12px;color:#d7e5f7} .review-buttons{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.review-buttons button{font-weight:bold;min-height:62px} .review-buttons button.keep{border-color:#317957}.review-buttons button.reject{border-color:#a34f62}.review-buttons button.hold{border-color:#a47941}.review-buttons button.selected.keep{background:#23523c;border-color:#70d6a2}.review-buttons button.selected.reject{background:#642b34;border-color:#fa959c}.review-buttons button.selected.hold{background:#5b4b2d;border-color:#ffcf80}.flexform{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.flexform select{width:100%} .topbuttons{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.statrail{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px} .statrail .info{padding:10px}.statrail .info b{font-size:20px}.flag{display:inline-block;padding:2px 7px;border-radius:6px;background:#253c4a;font-size:12px}.flag.danger{background:#53303a;color:#ffd0d7}.flag.ok{background:#244837;color:#ccf8db}.playhint{color:var(--muted);font-size:12px}.roundicon{font-weight:bold}input[type=checkbox]{accent-color:#76d5d8;width:16px;height:16px;vertical-align:middle}.checkbox-inline{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);cursor:pointer;margin:0}.progress{height:7px;background:#304355;border-radius:10px;overflow:hidden;margin-top:6px}.progress>div{background:#70d6a2;height:100%;width:0;transition:width .15s}.message{white-space:pre-wrap;overflow-wrap:anywhere}textarea{font:inherit;min-height:65px;width:100%;border:1px solid var(--border);background:#0f1926;color:var(--text);padding:10px;border-radius:9px;resize:vertical} .subtle{color:#bcd0e1;font-size:13px}.warncount{color:var(--amber)}.filenamebreak{overflow-wrap:anywhere}.detailsline{display:flex;gap:8px;flex-wrap:wrap}.detailsline span{background:#102235;border:1px solid #293f54;border-radius:6px;padding:3px 8px;font-size:12px} .nextbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.nextbar button{flex:0 0 auto}.labelnum{display:block;color:var(--muted);font-size:12px}select:disabled,input:disabled{opacity:.5} .upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}footer{margin:24px 0;color:var(--muted);font-size:12px}@media(max-width:1000px){.statrail{grid-template-columns:repeat(3,1fr)}}@media(max-width:750px){.upload-grid,.flexform{grid-template-columns:1fr}.review-buttons{grid-template-columns:repeat(2,1fr)}.statrail{grid-template-columns:repeat(2,1fr)}}
+
+</style>
+</head>
+<body><main>
+<header>
+<div class="headertop"><h1>LocalVoice <span style="color:var(--cyan)">音声レビュー</span> — ASTライブラリ v1</h1><span class="chip">ローカル専用 / WAV原本変更なし</span></div>
+<p class="intro">前のASR Pilot用レビューHTMLをベースに、1,167件のAST分類結果をその場で再生・確認する画面です。<strong>必要なものだけ採用・保留・除外</strong>し、判断結果は別のJSON/CSVとして保存します。12件のPilot枠制限はありません。</p>
+</header>
+<section class="panel" id="loadPanel">
+<div class="section-title"><h2>① 暫定ライブラリ v1 のフォルダを選ぶ</h2><span class="step">最初に一度だけ</span></div>
+<div class="instructions">Chrome / Edgeで <code>F:\AIProjects\LocalVoice\outputs\candidates\Ui_Shigure\v1</code> をフォルダごと選択してください。<strong>audioフォルダ単体ではなく、その1つ上のv1フォルダ</strong>です。manifest.jsonlとWAVの対応を自動確認します。</div>
+<div class="upload-grid" style="margin-top:14px">
+ <div><label for="libraryDir">フォルダ（v1）を読み込む</label><input id="libraryDir" type="file" webkitdirectory directory multiple><span class="inputhint">ブラウザ内でのみ参照。音声・索引は外部送信しません。</span></div>
+ <div><label for="savedReview">前回のレビューを復元（任意）</label><input id="savedReview" type="file" accept=".json,application/json"><span class="inputhint">先にv1を読み込んでから、レビュー保存JSONを選びます。別run・別WAVハッシュのデータは拒否。</span></div>
+</div>
+<div class="statrail" style="margin-top:15px">
+ <div class="info"><small>WAV読込</small><b id="total">0</b><span class="labelnum">AST候補</span></div>
+ <div class="info"><small>人手で採用</small><b id="kept">0</b><span class="labelnum">要件を自動承認はしない</span></div>
+ <div class="info"><small>除外</small><b id="rejected">0</b><span class="labelnum">元WAVには影響なし</span></div>
+ <div class="info"><small>保留</small><b id="held">0</b><span class="labelnum">あとで再確認</span></div>
+ <div class="info"><small>未判定</small><b id="unreviewed">0</b><span class="labelnum">必要な分だけ確認</span></div>
+</div>
+<div class="progress"><div id="progressBar"></div></div>
+<div class="topbuttons" style="margin-top:13px"><button id="priority" class="selected" type="button">重点候補（通常会話以外）</button><button id="all" type="button">すべてのWAVを見る</button><label class="checkbox-inline"><input id="onlyPending" type="checkbox">未判定だけ表示</label></div>
+<div class="grid3" style="margin-top:12px">
+ <div><label for="categoryFilter">カテゴリ</label><select id="categoryFilter"><option value="">すべて</option></select></div>
+ <div><label for="decisionFilter">レビュー結果</label><select id="decisionFilter"><option value="">すべて</option><option value="unreviewed">未判定</option><option value="keep">採用</option><option value="hold">保留</option><option value="reject">除外</option></select></div>
+ <div><label for="search">ファイル名・元ファイルパス・ID検索</label><input id="search" type="search" placeholder="例: c00042 / 配信ID"></div>
+</div>
+<div id="filterSummary" class="hint" style="margin-top:10px">フォルダを選んでください。</div>
+</section>
+<section class="panel player" id="reviewPanel">
+<div class="section-title"><h2>② 音声を聴いて確認する</h2><span class="step" id="cursor">フォルダ未選択</span></div>
+<div id="currentFile" class="filetitle">音声フォルダを選択してください</div>
+<div id="metadata" class="detailsline" style="margin:10px 0"></div>
+<audio id="audio" controls preload="none"></audio>
+<div class="nextbar"><button id="prev" type="button">← 前へ</button><button id="replay" type="button">↻ 先頭から再生</button><button id="next" class="primary" type="button">次の未判定 →</button><button id="forward" type="button">次の1件 →</button></div>
+<p class="playhint" style="margin-top:8px"><kbd>Space</kbd> 再生/停止 ／ <kbd>←</kbd><kbd>→</kbd> 前後 ／ <kbd>Enter</kbd> 次の未判定。入力欄操作時は無効。</p>
+<div class="line"></div>
+<h3>レビュー判定</h3>
+<p class="hint">ASTのラベルは機械推定です。判定しない音声は未判定のまま残して構いません。「採用」は<strong>ブラウザでの候補採用メモ</strong>であり、本人性/音質が確認されるまで正式な承認済みデータセットには移しません。</p>
+<div class="review-buttons" id="decisions">
+ <button data-decision="keep" class="keep" type="button">✓ 採用<small>手動で利用候補にする</small></button>
+ <button data-decision="hold" class="hold" type="button">◷ 保留<small>あとで聴き直す</small></button>
+ <button data-decision="reject" class="reject" type="button">✕ 除外<small>不適切・不要</small></button>
+ <button id="clearDecision" type="button">↶ 判定を解除<small>未判定に戻す</small></button>
+</div>
+<div class="row" style="margin-top:12px"><label class="checkbox-inline"><input id="autoAdvance" type="checkbox" checked>判定したら次の未判定へ移動</label></div>
+<div class="line"></div>
+<h3>聴感分類・本人性・音質のメモ</h3>
+<p class="hint">AST分類は変更しません。「手動分類」で聞こえたカテゴリに修正できます。本人性と録音品質は独立して記録します。</p>
+<div class="flexform">
+ <div><label for="manualCategory">手動分類（変更なし＝ASTのまま）</label><select id="manualCategory"><option value="">AST候補を維持</option></select></div>
+ <div><label for="identity">話者</label><select id="identity"><option value="unverified">未確認</option><option value="self">本人と確認</option><option value="other">他人声</option><option value="overlap">複数話者・混話</option><option value="uncertain">判定不能</option></select></div>
+ <div><label for="quality">録音品質</label><select id="quality"><option value="unverified">未確認</option><option value="ok">問題なし</option><option value="noise">ノイズ</option><option value="bgm">BGM・背景音</option><option value="clipping">音割れ・歪み</option><option value="overlap">声の重なり</option><option value="bad_audio">無音・破損・極端な低音量</option><option value="other">その他の問題</option></select></div>
+</div>
+<div class="flexform" style="grid-template-columns:1fr 2fr;margin-top:12px">
+ <div><label for="rejectReason">除外理由（除外する場合は必須）</label><select id="rejectReason"><option value="">理由を選択</option><option value="other_voice">他人の声</option><option value="mixed">混話</option><option value="noise">環境音・無音</option><option value="bgm">BGM</option><option value="quality">音質不良</option><option value="not_useful">用途に不適切</option><option value="other">その他</option></select></div>
+ <div><label for="memo">メモ（任意）</label><textarea id="memo" rows="2" placeholder="例: 息声が混じる／BGMが強い／囁きと判断"></textarea></div>
+</div>
+<div id="recordInfo" class="scope">レビューしていないWAVは自動的に採用されません。</div>
+</section>
+<section class="panel">
+<div class="section-title"><h2>③ レビュー履歴を保存・復元</h2><span class="step">出力は判断記録のみ</span></div>
+<p>「レビューJSON」は途中保存と再開用。「判断CSV」はExcel確認用です。どちらも<strong>元WAVを移動・削除・変更しません</strong>。ブラウザを閉じる前にJSONを保存してください。</p>
+<div class="exportButtons">
+ <button id="exportReview" class="primary" type="button">レビューJSONを保存</button>
+ <button id="exportCsv" type="button">判断CSVを保存</button>
+</div>
+<p class="hint">保存JSONにはソースID、SHA-256、判定・手動分類・本人性・音質・メモだけを含みます。音声そのものは含まれません。読み込み時にライブラリのプロファイル・run・入力指紋・ファイルSHAと照合します。</p>
+<div id="status" class="message" role="status">v1フォルダを選択してください。</div>
+<details><summary>安全性と制限</summary><p>外部通信・音声のアップロード・Cookie・追跡はありません。HTMLは端末上で完結し、採用しても元WAVや暫定ライブラリを変更しません。保存ファイルはダウンロードフォルダへ生成するだけです。レビュー結果を正式版 <code>outputs/datasets/</code> に反映する処理は別工程です。</p><p class="warning">ブラウザ内で採用しただけでは本人確認・QC承認は完了しません。たとえば話者「本人と確認」および録音品質「問題なし」を記録することはできますが、それを人手で確認した範囲でだけ有効なレビュー証跡として扱ってください。</p></details>
+</section>
+<footer>LocalVoice AST Candidate Reviewer / 元HTML: LocalVoice ASR Pilot Reviewer。分類済みWAVは再推論せず参照するだけ。ページを閉じると未保存の変更が消えます。</footer>
+</main>
+<script>
+"use strict";
+const byId=id=>document.getElementById(id);
+const CATEGORIES=[
+ ['01_通常会話','通常会話'],['02_囁き','👂 囁き'],['03_吐息','😮‍💨 吐息'],['04_笑い','🤭 笑い'],
+ ['05_喘ぎ_うめき','🥵 喘ぎ・うめき'],['06_息切れ_荒い呼吸','🌬️ 息切れ'],['07_息をのむ','😮 息をのむ'],
+ ['08_泣き声','😭 泣き声'],['09_悲鳴','😱 悲鳴'],['10_あくび','🥱 あくび'],['11_鼻歌','🎵 鼻歌'],
+ ['90_その他','その他'],['99_未分類_要確認','未分類・要確認']
+];
+const ALLOWED_CATEGORIES=new Set(CATEGORIES.map(x=>x[0]));
+const DECISIONS=new Set(['keep','hold','reject']);
+const IDENTITIES=new Set(['unverified','self','other','overlap','uncertain']);
+const QUALITIES=new Set(['unverified','ok','noise','bgm','clipping','overlap','bad_audio','other']);
+const REASONS=new Set(['','other_voice','mixed','noise','bgm','quality','not_useful','other']);
+const state={records:[],byId:new Map(),review:new Map(),order:[],current:null,position:0,mode:'priority',objectURL:null,dirty:false,info:null};
+const changedAt=()=>new Date().toISOString();
+const defaultRecord=()=>({decision:'',manual_category:'',identity:'unverified',quality:'unverified',reject_reason:'',memo:'',updated_at:''});
+const editOf=id=>state.review.get(id)||defaultRecord();
+const effectiveCategory=item=>editOf(item.source_id).manual_category||item.category_dir;
+function countDecisions(){const c={keep:0,hold:0,reject:0,unreviewed:0};for(const item of state.records){const d=editOf(item.source_id).decision;if(c[d]===undefined)c.unreviewed++;else c[d]++}return c;}
+function tell(msg,error=false){const p=byId('status');p.textContent=msg;p.className='message'+(error?' error':'');}
+function safeName(p){return typeof p==='string'&&p.startsWith('audio/')&&p.split('/').length===3&&!p.includes('\\')&&!p.split('/').includes('..')&&p.toLowerCase().endsWith('.wav')&&!p.includes('\0');}
+function summaryLabel(info){return `${info.profile} / ${info.version} / run ${info.run_id}`;}
+function createChip(parent,value,className=''){const chip=document.createElement('span');chip.className='flag '+className;chip.textContent=value;parent.append(chip);}
+function selectedFile(){return state.order[state.position]||null;}
+function cleanUrl(){const audio=byId('audio');audio.pause();audio.removeAttribute('src');audio.load();if(state.objectURL){URL.revokeObjectURL(state.objectURL);state.objectURL=null;}}
+function matchFilter(item){const dec=editOf(item.source_id).decision||'unreviewed';if(state.mode==='priority'&&item.category_dir==='01_通常会話')return false;
+ const cat=byId('categoryFilter').value;if(cat&&effectiveCategory(item)!==cat)return false;
+ const df=byId('decisionFilter').value;if(df&&dec!==df)return false;
+ if(byId('onlyPending').checked&&dec!=='unreviewed')return false;
+ const q=byId('search').value.trim().toLowerCase();if(q&&!`${item.source_id} ${item.relative_path||''} ${item.output_path||''} ${item.category_dir}`.toLowerCase().includes(q))return false;
+ return true;
+}
+function filterList(keepId=null){const previous=keepId||state.current;state.order=state.records.filter(matchFilter);const found=state.order.findIndex(item=>item.source_id===previous);state.position=found>=0?found:Math.min(state.position,Math.max(0,state.order.length-1));render();}
+function render(){const counts=countDecisions();byId('total').textContent=state.records.length.toLocaleString('ja-JP');for(const key of ['kept','held','rejected','unreviewed']){byId(key).textContent=counts[key==='kept'?'keep':key==='held'?'hold':key==='rejected'?'reject':'unreviewed'];}
+ byId('progressBar').style.width=state.records.length?`${100*(state.records.length-counts.unreviewed)/state.records.length}%`:'0%';
+ byId('filterSummary').textContent=state.info?`${summaryLabel(state.info)} — 現在 ${state.order.length} 件を表示（うち未判定 ${state.order.filter(i=>!editOf(i.source_id).decision).length} 件）。通常会話以外を優先しています。`:'フォルダを選んでください。';
+ const item=selectedFile();const nextKey=item?.source_id||null;byId('cursor').textContent=item?`${state.position+1} / ${state.order.length}件`:'該当なし';
+ if(state.current!==nextKey){cleanUrl();state.current=nextKey;}
+ byId('currentFile').textContent=item?item.output_path:'条件に合うWAVはありません（フィルタを確認）';
+ const meta=byId('metadata');meta.replaceChildren();
+ if(item){if(!state.objectURL){state.objectURL=URL.createObjectURL(item.file);byId('audio').src=state.objectURL;}
+  const r=editOf(item.source_id);createChip(meta,`ID: ${item.source_id}`);createChip(meta,`AST: ${item.category_dir}`);if(r.manual_category)createChip(meta,`手動: ${r.manual_category}`);if(item.category_score!==null&&item.category_score!==undefined)createChip(meta,`ASTスコア: ${Number(item.category_score).toFixed(3)}`);createChip(meta,`元: ${item.relative_path||'不明'}`);createChip(meta,r.decision?`判断: ${r.decision}`:'未判定',r.decision==='reject'?'danger':r.decision==='keep'?'ok':'');
+  byId('manualCategory').value=r.manual_category;byId('identity').value=r.identity;byId('quality').value=r.quality;byId('rejectReason').value=r.reject_reason;byId('memo').value=r.memo;
+  byId('recordInfo').textContent=r.updated_at?`このWAVの最終記録: ${r.updated_at}／人手判定は自動で原本や正式ライブラリに適用されません。`:'このWAVはまだ手動レビューされていません。';
+ }else{byId('manualCategory').value='';byId('identity').value='unverified';byId('quality').value='unverified';byId('rejectReason').value='';byId('memo').value='';byId('recordInfo').textContent='該当する候補がありません。';}
+ for(const el of document.querySelectorAll('[data-decision]'))el.classList.toggle('selected',!!item&&editOf(item.source_id).decision===el.dataset.decision);
+ for(const id of ['prev','next','forward','replay','manualCategory','identity','quality','rejectReason','memo','clearDecision'])byId(id).disabled=!item;
+ for(const el of document.querySelectorAll('[data-decision]'))el.disabled=!item;
+ byId('exportReview').disabled=!state.records.length;byId('exportCsv').disabled=!state.records.length;
+}
+function move(delta){if(!state.order.length)return;state.position=(state.position+delta+state.order.length)%state.order.length;render();}
+function nextUnreviewed(){if(!state.order.length)return;const curr=state.position;for(let j=1;j<=state.order.length;j++){const idx=(curr+j)%state.order.length;if(!editOf(state.order[idx].source_id).decision){state.position=idx;render();return;}}move(1);tell('この表示範囲のWAVはすべて判定済みです。');}
+function store(change,autoNext=false){const item=selectedFile();if(!item)return;const prev=editOf(item.source_id);const r={...prev,...change,updated_at:changedAt()};
+ if(!r.decision&&!r.manual_category&&r.identity==='unverified'&&r.quality==='unverified'&&!r.reject_reason&&!r.memo)state.review.delete(item.source_id);else state.review.set(item.source_id,r);
+ state.dirty=true;const key=item.source_id;const oldIndex=state.position;filterList(key);
+ if(autoNext&&byId('autoAdvance').checked){if(state.order.length===0){tell('この表示範囲の未判定レビューが終わりました。');return;}if(!state.order.some(x=>!editOf(x.source_id).decision)){tell('この表示範囲のWAVはすべて判定済みです。');return;}
+  if(state.order.some(x=>x.source_id===key))nextUnreviewed();else{state.position=Math.min(oldIndex,Math.max(0,state.order.length-1));if(editOf(state.order[state.position].source_id).decision)nextUnreviewed();else render();}}
+}
+function decision(type){const item=selectedFile();if(!item)return;if(type==='reject'&&!byId('rejectReason').value){tell('除外理由を選択してから「除外」を押してください。',true);byId('rejectReason').focus();return;}
+ const edits={decision:type};if(type!=='reject')edits.reject_reason='';store(edits,true);tell(type==='keep'?'候補として採用を記録しました（本人性と品質は別に判断）。':type==='hold'?'保留として記録しました。':'除外として記録しました。元WAVは変更していません。');}
+function safeExportCsv(value){let t=String(value??'');if(/^[\s]*[=+\-@]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
+function dl(text,name,mime){const data=new Blob([text],{type:mime});const url=URL.createObjectURL(data);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);}
+function getExportRecords(){return [...state.review.entries()].map(([id,r])=>{const item=state.byId.get(id);return {source_id:id,source_sha256:item.source_sha256,ast_category:item.category_dir,...r};}).sort((a,b)=>a.source_id.localeCompare(b.source_id));}
+function exportJson(){if(!state.info){tell('先にv1フォルダを選んでください。',true);return;}const data={schema:'localvoice.ast-candidate-review.v1',created_at:changedAt(),library:{profile:state.info.profile,version:state.info.version,run_id:state.info.run_id,input_sha256:state.info.input_sha256,model_id:state.info.model_id,source_count:state.records.length},records:getExportRecords()};
+ dl(JSON.stringify(data,null,2),'localvoice_ast_candidate_review_'+state.info.version+'.json','application/json');state.dirty=false;tell('レビューJSONを保存しました。次回はv1フォルダとこのJSONを選べば復元できます。');}
+function exportCsv(){if(!state.info){tell('先にv1フォルダを選んでください。',true);return;}const columns=['source_id','source_sha256','ast_category','manual_category','decision','identity','quality','reject_reason','memo','updated_at'];const rows=getExportRecords().filter(r=>r.decision||r.manual_category||r.memo||r.identity!=='unverified'||r.quality!=='unverified');
+ const csv='\ufeff'+[columns,...rows.map(r=>columns.map(k=>r[k]??''))].map(row=>row.map(safeExportCsv).join(',')).join('\r\n')+'\r\n';dl(csv,'localvoice_ast_review_decisions_'+state.info.version+'.csv','text/csv;charset=utf-8');tell(`${rows.length}件のレビュー記録をCSVに出力しました（WAVは未変更）。`);}
+function assertRecord(v){if(typeof v!=='object'||v===null)throw Error('不正なレビュー行です');const id=v.source_id;if(typeof id!=='string'||!state.byId.has(id))throw Error(`不明なsource_id: ${id}`);const item=state.byId.get(id);
+ if(v.source_sha256!==item.source_sha256||v.ast_category!==item.category_dir)throw Error(`WAVのSHAまたはAST分類が一致しません: ${id}`);
+ if(v.decision&&!DECISIONS.has(v.decision))throw Error(`不明な判定: ${id}`);
+ if(v.manual_category&&!ALLOWED_CATEGORIES.has(v.manual_category))throw Error(`不明な手動分類: ${id}`);
+ if(!IDENTITIES.has(v.identity)||!QUALITIES.has(v.quality)||!REASONS.has(v.reject_reason))throw Error(`不明な本人性・品質・除外理由: ${id}`);
+ if(v.decision==='reject'&&!v.reject_reason)throw Error(`除外理由がありません: ${id}`);
+ if(typeof v.memo!=='string'||v.memo.length>2000)throw Error(`不正なメモ: ${id}`);
+ return {source_id:id,decision:v.decision||'',manual_category:v.manual_category||'',identity:v.identity,quality:v.quality,reject_reason:v.reject_reason,memo:v.memo,updated_at:typeof v.updated_at==='string'?v.updated_at.slice(0,100):''};
+}
+async function importReview(file){if(!state.info)throw Error('先にv1フォルダを読み込んでください。');const data=JSON.parse(await file.text());if(data.schema!=='localvoice.ast-candidate-review.v1'||!Array.isArray(data.records)||!data.library)throw Error('対応外のレビューJSON形式です');
+ for(const key of ['profile','version','run_id','input_sha256','model_id','source_count']){const v=key==='source_count'?state.records.length:state.info[key];if(data.library[key]!==v)throw Error(`ライブラリの${key}が現在のv1と一致しません。`);}
+ const next=new Map();for(const v of data.records){const r=assertRecord(v);if(next.has(r.source_id))throw Error(`重複した記録: ${r.source_id}`);next.set(r.source_id,r);}state.review=next;state.dirty=false;filterList();tell(`${next.size}件の保存済みレビューを復元しました。`);}
+function pathFromEntry(file){const p=(file.webkitRelativePath||'').replaceAll('\\','/');if(!p)return '';const parts=p.split('/');return parts.slice(1).join('/');}
+function parseJsonl(src){const seen=new Set(),list=[];src.split(/\r?\n/).forEach((line,n)=>{if(!line.trim())return;let obj;try{obj=JSON.parse(line)}catch(e){throw Error(`manifest.jsonlの${n+1}行がJSONではありません。`)}
+ if(typeof obj.source_id!=='string'||seen.has(obj.source_id)||!safeName(obj.output_path)||typeof obj.source_sha256!=='string'||!/^[a-f0-9]{64}$/i.test(obj.source_sha256)||obj.output_path.split('/')[1]!==obj.category_dir)throw Error(`manifest.jsonlの${n+1}行に不正なID・パス・SHAがあります。`);
+ if(obj.library_tier!=='UNVERIFIED_AST_CANDIDATE'||obj.human_approved!==false)throw Error(`manifest.jsonlの${n+1}行は未確認AST候補ではありません。`);seen.add(obj.source_id);list.push(obj);});return list;}
+async function loadFolder(list){const candidates=[...list];if(!candidates.length)throw Error('フォルダが空です。');const paths=new Map();for(const f of candidates){const key=pathFromEntry(f);if(!key||paths.has(key))throw Error(`フォルダ選択で重複・欠損パス: ${key}`);paths.set(key,f);}
+ const manifest=paths.get('manifest.jsonl'),summary=paths.get('summary.json');if(!manifest||!summary)throw Error('v1フォルダのmanifest.jsonlとsummary.jsonが必要です。audio単体ではなくv1を選んでください。');
+ const info=JSON.parse(await summary.text());if(info.schema_version!=='localvoice.ast-batch.v1'||info.tier!=='UNVERIFIED_AST_CANDIDATE'||typeof info.profile!=='string'||typeof info.version!=='string'||typeof info.run_id!=='string'||typeof info.input_sha256!=='string')throw Error('未対応の候補ライブラリsummary.jsonです。');
+ const parsed=parseJsonl(await manifest.text());if(parsed.length!==info.source_count)throw Error(`manifest行数${parsed.length}とsummaryの入力数${info.source_count}が異なります。`);
+ const matched=[],seenPaths=new Set();for(const r of parsed){if(seenPaths.has(r.output_path))throw Error('重複したWAV出力パスです: '+r.output_path);seenPaths.add(r.output_path);const f=paths.get(r.output_path);if(!f)throw Error('WAVが見つかりません: '+r.output_path);matched.push({...r,file:f});}
+ const wavFiles=[...paths.keys()].filter(p=>p.toLowerCase().endsWith('.wav'));if(wavFiles.length!==parsed.length)throw Error(`WAV数${wavFiles.length}とmanifest行数${parsed.length}が異なります。`);
+ // Validate all metadata before committing browser state; no partial import.
+ state.records=matched.sort((a,b)=>a.source_id.localeCompare(b.source_id));state.byId=new Map(state.records.map(x=>[x.source_id,x]));state.review=new Map();state.info=info;state.mode='priority';byId('priority').classList.add('selected');byId('all').classList.remove('selected');byId('search').value='';byId('decisionFilter').value='';byId('onlyPending').checked=false;
+ cleanUrl();state.current=null;state.position=0;state.dirty=false;filterList();
+ tell(`${state.records.length}件の未確認AST候補を読み込みました。通常会話以外の${state.records.filter(i=>i.category_dir!=='01_通常会話').length}件を優先表示しています。まず必要な音声だけ聴いてください。`);
+}
+function boot(){for(const [key,label] of CATEGORIES){for(const id of ['categoryFilter','manualCategory']){const opt=document.createElement('option');opt.value=key;opt.textContent=label;byId(id).append(opt);}}
+ byId('libraryDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存のレビューを破棄して別のライブラリを読み込みますか？')){e.target.value='';return;}
+ try{await loadFolder(list);}catch(err){tell('読み込みを中断: '+err.message,true);}e.target.value='';};
+ byId('savedReview').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(state.dirty&&!window.confirm('現在の未保存レビューを保存済みJSONで置き換えますか？'))return;await importReview(f);}catch(err){tell('復元を中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('priority').onclick=()=>{state.mode='priority';byId('priority').classList.add('selected');byId('all').classList.remove('selected');filterList();};byId('all').onclick=()=>{state.mode='all';byId('all').classList.add('selected');byId('priority').classList.remove('selected');filterList();};
+ for(const id of ['search','categoryFilter','decisionFilter','onlyPending'])byId(id).addEventListener(id==='search'?'input':'change',()=>filterList());
+ byId('prev').onclick=()=>move(-1);byId('forward').onclick=()=>move(1);byId('next').onclick=nextUnreviewed;
+ byId('replay').onclick=()=>{const a=byId('audio');a.currentTime=0;a.play().catch(()=>{});};
+ for(const button of document.querySelectorAll('[data-decision]'))button.onclick=()=>decision(button.dataset.decision);
+ byId('clearDecision').onclick=()=>{store({decision:'',reject_reason:''});tell('未判定に戻しました（他のメモは保持）。');};
+ byId('manualCategory').onchange=()=>store({manual_category:byId('manualCategory').value});byId('identity').onchange=()=>store({identity:byId('identity').value});byId('quality').onchange=()=>store({quality:byId('quality').value});byId('rejectReason').onchange=()=>store({reject_reason:byId('rejectReason').value});byId('memo').onchange=()=>store({memo:byId('memo').value.slice(0,2000)});
+ byId('exportReview').onclick=exportJson;byId('exportCsv').onclick=exportCsv;
+ document.addEventListener('keydown',event=>{if(event.ctrlKey||event.metaKey||event.altKey||/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(document.activeElement?.tagName||''))return;const a=byId('audio');if(event.code==='Space'){event.preventDefault();if(a.src){if(a.paused)a.play().catch(()=>{});else a.pause();}}else if(event.code==='ArrowRight'){event.preventDefault();move(1);}else if(event.code==='ArrowLeft'){event.preventDefault();move(-1);}else if(event.code==='Enter'){event.preventDefault();nextUnreviewed();}});
+ window.addEventListener('beforeunload',e=>{if(state.dirty){e.preventDefault();e.returnValue='';}});render();
+}
+boot();
+
+</script>
+</body></html>
