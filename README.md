@@ -4,6 +4,8 @@
 
 公式Irodori-TTSのZero-shot VoiceDesignは、独立した `Irodori-TTS/` クローンで動作させます。LocalVoice独自の機能は公式クローンへ追加せず、ユーザーが選んだ参照WAVを手動で指定します。
 
+**初回話者のReference Bankも自動セットアップ対応（話者ラベルの本人確認のみ手動）。** ローカルPythonの実機受入はまだ未実施で、正式QCや多サイト収集E2Eとは別です。
+
 **最初に読む資料：** [ディレクトリ責務・安全規則](docs/PROJECT_LAYOUT.md) ／ [AST一括分類手順](docs/AST_BATCH_RUNBOOK.md) ／ [分類・レビュー履歴の運用](docs/VERSIONED_AUDIO_METADATA.md)
 
 ## 現在の到達点（2026-10-09）
@@ -201,68 +203,33 @@ python .\scripts\diarize.py `
   --output ".\data\diarization\archive_001"
 ```
 
-### 新しい話者の初回準備：Reference Bank用素材はどう用意するか
+### 新しい話者の初回収集（Reference Bankなしで開始）
 
-**初回だけは通常の収集コマンドを使用できません。** `scripts/localvoice.py --url` / `--wav` / `--vocals` は既存 `self_reference_bank.npz` で本人照合するため、Reference Bank未作成なら停止します。まず `yt-dlp` / ローカル録音から本人の声を手動選別し、その後にReference Bankを作ってください。
+**推奨：** 新規profileでは最初から本人WAVを手作業で何十件も準備する必要はありません。`localvoice.py` が Reference Bank の有無を確認し、未作成なら以下を**同じ実行中に続けて処理**します。
 
-**収録の基準：** `build_reference_bank.py` が受け付けるのは**2〜20秒のWAV**で、最低**3件**の有効な本人声が必要です。最低数だけでは話者判定が安定するとは限らないため、できれば**5〜15秒程度の明瞭な通常発話を10〜30件**、複数の発話場面から収集することを推奨します（推奨件数はコード上の必須条件ではありません）。他人声・重なり・BGM・効果音・読み上げ音声が強いものを除きます。**Reference Bankに誰の声を入れるかは最初だけ人間が確認する必要があります。**
-
-#### 方法A：アーカイブから本人だけが話す区間を切り出す
-
-`yt-dlp` を直接使えば、Reference Bankは不要です。以下は**初回話者登録の例**。URLと切り出し開始時刻は、元配信を聴いて本人が単独で発話している部分に**必ず置き換え**ます。抽出元は配信アーカイブ以外の手元の音声でも構いません。
+1. アーカイブURLを `yt-dlp` で取得（または `--wav` / `--vocals` で既存音声を指定）。
+2. FFmpegでWAVへ変換し、`audio-separator`でVocals抽出（`--vocals` の場合は省略）。
+3. pyannoteで話者候補ごとに分離。**2〜20秒、話者重複なし、無音/クリッピングが少ない**区間だけ抽出し、話者ラベルごと最大3件の短い試聴用WAVを作成。
+4. ターミナルに`SPEAKER_00`などの候補とファイルパスを表示。利用者が **`p SPEAKER_00`で数件試聴→本人の話者ラベルを選ぶ**。同じ本人が複数ラベルに分かれた場合は `SPEAKER_00,SPEAKER_01` のように同時選択可能。**機械が自動的に話者の実名を決定することはない**。
+5. 選んだ話者から全体に分散した最大24クリップを自動抽出し、`build_reference_bank.py`で`self_reference_bank.npz`を生成。**元の長尺音声を繰り返し話者分離せず**、初回の結果を共有してそのまま本人照合 `SELF / REVIEW / OTHER` まで進む。
+6. 必要なら`review_training_audio.py`で確認し、`collect_training_audio.py --dry-run`で素材追加前の確認。完成したBankは次のアーカイブから自動で再利用。
 
 ~~~powershell
 cd F:\AIProjects\LocalVoice
-$profile = "New_Speaker"
-$workDir = ".\work\reference_bootstrap\$profile\archive_001"
-$refs = ".\data\reference_bank\$profile\audio"
-New-Item -ItemType Directory -Force $workDir, $refs | Out-Null
-
-# 通常のlocalvoice.pyではなく、素材用の音声のみ取得
-yt-dlp --no-playlist -f "bestaudio/best" -o "$workDir\source.%(ext)s" "<配信アーカイブURL>"
-
-$source = Get-ChildItem $workDir -File |
-  Where-Object { $_.Name -like "source.*" -and $_.Extension -notin @(".part", ".ytdl") } |
-  Select-Object -First 1 -ExpandProperty FullName
-if (-not $source) { throw "元音声が見つかりません" }
-
-# 例示時刻。実際に本人しか話していない時間に変更して使用
-ffmpeg -n -ss 00:05:10 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_001.wav"
-ffmpeg -n -ss 00:18:20 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_002.wav"
-ffmpeg -n -ss 00:42:30 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_003.wav"
+.\.venv\Scripts\python.exe .\scripts\localvoice.py --profile New_Speaker --url "<配信アーカイブURL>"
 ~~~
 
-`ffmpeg -n` は既存WAVの上書きを拒否します。完成したWAVは必ず再生し、本人だけと確認してからReference Bankへ使います。**最低3件は実行条件であり、3件だけでの精度保証はありません。** 追加の配信アーカイブは`archive_002`など別フォルダに取得してください。すでに元の音声がPCにある場合はダウンロードを省き、`ffmpeg`の`-i`へそのパスを指定できます。長尺音源全体をWAV化せず必要な短い区間だけ作れます。
+話者候補が表示されたら、`p SPEAKER_00` などと入力すると`ffplay`で短い音声を再生します。誰が本人か判断したら、該当ラベルをカンマ区切りで入力して`YES`と確認してください。`ffplay`がない場合は表示された試聴用WAVを手動で開けます。
 
-#### 方法B：複数人の配信から候補を探す
+**試聴候補・選定WAVの場所：** `data/runs/<profile>/<run-name>/bootstrap/previews/` と `.../bootstrap/selected_reference_wavs/`。`data/reference_bank/<profile>/`にBankのNPZ/JSONが作成されます。選定したクリップは**初期の仮Reference Bank**であって、本人確認の最終保証ではありません。提示音声で判断できない場合は `q` で中断して別の配信を使用してください。話者が3区間未満しか取れない場合も中断します。対話型端末が必要です。
 
-単独発話区間が見つからない場合、独立した`diarize.py`を使うと、**Reference Bankなし**で話者別の候補区間を得られます。先に対象の時間帯だけWAVに切り出しておくと容量を抑えられます。
+**既存Bankの保全：** `self_reference_bank.npz`がすでにあれば初回生成は実行せず通常モードで収集します。Bank生成段階で既存NPZ/JSONを上書きすることはありません。`--force` は既存runフォルダを削除するため使用せず、途中で停止したら原因を確認し、新しい `--run-name` で再試行してください。原本WAVや過去の分類履歴は削除しません。
 
-~~~powershell
-ffmpeg -n -ss 00:10:00 -i $source -t 600 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$workDir\candidate_10min.wav"
-.\.venv\Scripts\python.exe .\scripts\diarize.py --input "$workDir\candidate_10min.wav" --output "$workDir\diarization"
-~~~
+**閾値：** 初回は `config.toml` の既定閾値（または既存の同profile`thresholds.json`）を使用します。自動で「別ラベル＝他人」とみなしてnegative sampleにはしません。同じ人が複数ラベルに割れるためです。本人と他人の音声が明確に分かってから、別途 `calibrate_threshold.py` で調整できます。
 
-出力の`SPEAKER_00`・`SPEAKER_01`などは**機械が付けた仮ラベル**で、本人かどうかは未判定です。全フォルダを無条件にコピーせず、実際に聴いて本人だと分かった**2〜20秒のWAVだけ**を`data/reference_bank/<profile>/audio/`へ個別コピーします。BGMが強い場合は先にVocals分離する方法もありますが、分離で声が変質することがあります。
+**手動の代替ルート：** 特定の配信から候補が取れない場合、従来通り `yt-dlp` → `ffmpeg` → 必要に応じて `diarize.py` → 人間が本人WAV（2〜20秒、最低3件）を `data/reference_bank/<profile>/audio/`へ用意し、次節の `build_reference_bank.py` を実行する方法も使えます。通常はこの手動準備は不要です。
 
-#### 本人のWAVが揃ったらReference Bank生成
-
-~~~powershell
-$profile = "New_Speaker"
-$bank = ".\data\reference_bank\$profile\self_reference_bank.npz"
-if (Test-Path $bank) { throw "すでにReference Bankがあります。上書きせずバックアップと意図を確認してください" }
-
-.\.venv\Scripts\python.exe .\scripts\build_reference_bank.py --profile $profile --source ".\data\reference_bank\$profile\audio"
-Test-Path $bank
-~~~
-
-成功すると`self_reference_bank.npz`・`self_reference_bank.json`が作られます。結果の`Lowest similarity clips`（他サンプルから離れた候補）は、他人声・録音ノイズ混入がないか再確認します。既存bankで`build_reference_bank.py`を再実行するとファイルが**上書き**されるため、明示的な更新時以外は行いません。
-
-**閾値調整は任意の次工程**です。`calibrate_threshold.py --negative-source`には、**本人以外の人の声**を収録した2〜20秒のWAVを別フォルダに用意します。本人の参照音声をnegativeへ混ぜません。`thresholds.json`がなければ`config.toml`の初期閾値を使いますが、他人声を誤採用しない保証はありません。
-
-Reference Bankができた後に初めて、通常の`localvoice.py --url`による取得→話者判定→手動レビュー→`collect_training_audio.py --dry-run`→素材蓄積へ進めます。
-
-### Reference Bank作成（本人WAV準備後の実行コマンド）
+### Reference Bankを手動生成する場合（代替・既存Bankは上書き注意）
 
 前節の音声準備が終わってから実行します。既存bankがある場合は上書きになるため、初期登録のために安易に再実行しないでください。
 
@@ -316,7 +283,7 @@ python .\scripts\localvoice.py `
   --vocals ".\path\to\Vocals.wav"
 ```
 
-**事前条件：** 指定したprofileの `data/reference_bank/<profile>/self_reference_bank.npz` が必要です。モデル、`yt-dlp`、FFmpeg、`audio-separator`、話者照合を行うPython環境も必要。初めて使うprofileはReference Bankの構築と判定閾値の確認を済ませてください。ここまでで生成されるのは**話者ごとに分割した未整理の候補クリップ**であり、ASTの日本語カテゴリ分類はまだ実行されません。
+**前提：** Python環境・FFmpeg・audio-separator・pyannote等が必要です（URL取得時はyt-dlpも必要）。**Bankがないprofileでは初回セットアップが自動起動**し、話者候補の試聴と本人ラベルの選択だけを求めます。Bankがあるprofileは通常の本人照合へ直行します。出力は話者ごとに分割した候補クリップであり、AST日本語カテゴリ分類は別工程です。
 
 分類結果:
 
@@ -387,7 +354,7 @@ python .\scripts\review_training_audio.py `
 
 **取得と素材の蓄積はコマンドから可能ですが、全工程を1コマンドで連結する実装ではありません。**
 
-1. `localvoice.py --url`（または `--wav`, `--vocals`）で取得→必要ならVocals分離→話者分離→SELF/REVIEW/OTHER判定。各runの `classification.tsv` と `my_voice/` の音源を確認。
+1. `localvoice.py --url`（または `--wav`, `--vocals`）で取得→必要ならVocals分離→話者分離→SELF/REVIEW/OTHER判定。**Reference Bankがなければ初回話者選択とBank生成へ自動移行**。各runの `classification.tsv` と `my_voice/` の音源を確認。
 2. `review_training_audio.py --profile <profile>` で `review/`、`review_unscored/` を必要な範囲だけ再生し、本人声・極端な声を採用/保留/却下。
 3. `collect_training_audio.py --profile <profile> --dry-run` で**追加候補と重複・失敗件数を検査**。問題がなければ `--dry-run` を外して `data/training_audio/<profile>/audio/` へ収集。
 4. **必要に応じて別途** ASTの新run分類と、共通HTMLでのレビュー/メタデータ版更新を行う。既存の `Ui_Shigure` v2へ自動合流する仕組みは未実装。新規アーカイブを含むフルE2Eは後続のLV-R07で扱う。
