@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import shutil
 import subprocess
 import sys
@@ -298,6 +299,10 @@ def reference_candidates(
     """Select speech-sized non-overlapping turns. This is QC, NOT identity proof."""
     candidates: dict[str, list[tuple[float, float, str]]] = {}
     for start, end, speaker in sorted(turns):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", speaker):
+            raise ValueError(f"Unsafe diarized speaker label: {speaker!r}")
+        if not (np.isfinite(start) and np.isfinite(end)):
+            continue
         duration = end - start
         if not BOOTSTRAP_MIN_DURATION <= duration <= BOOTSTRAP_MAX_DURATION:
             continue
@@ -618,8 +623,9 @@ def classify(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Target-speaker extraction, with interactive Reference Bank bootstrap when needed, from "
-            "mixed WAV, or a Vocals WAV."
+            "Extract a target speaker from a supported archive URL, source audio, "
+            "or Vocals WAV. If the profile has no Reference Bank, use an "
+            "interactive first-speaker bootstrap after audio separation."
         )
     )
     parser.add_argument("--profile", required=True)
