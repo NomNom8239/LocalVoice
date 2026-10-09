@@ -16,6 +16,7 @@ Scope: directory and non-destructive write contracts. The current MVP is a human
 | `.venv/` | Existing LocalVoice acquisition/processing Python runtime | Ignored | No extra environments without a documented dependency conflict. Irodori uses its own `Irodori-TTS/.venv/`. |
 | `work/` | Per-run intermediate outputs, ASR Pilot evidence, classification/QC/review candidates | Ignored | Create a fresh run ID; never overwrite another run or `data/`. Save failure/unknown/review records; do not automatically wipe contents. |
 | `outputs/` | Versioned unverified candidate-browsing library **and separate** human-approved reference WAV libraries | Ignored | Keep `outputs/candidates/` visibly UNVERIFIED and `outputs/datasets/` approved only. Never overwrite versions, alter original WAVs, or silently relabel unverified outputs as approved. |
+| `outputs/metadata/<profile>/` | Immutable **CSV/JSON/manifest-only** version history and reviewer input inbox | Ignored | Metadata-only v1/v2/v3 history in `versions/`; exported HTML CSV/JSON in `inbox/` and immutable `versions/<version>/review/`. No WAV copies here. `outputs/candidates/` becomes an on-demand materialized view; legacy v1/v2 media stay untouched until explicitly retired after verification. |
 | `cache/` | **Optional** disposable model/tool caches explicitly configured for this project | Ignored | Prefer tool defaults outside the source tree; never place cache files in `scripts/`, `src/`, or the upstream repository as custom additions. |
 | `start_irodori_voicedesign.bat` | LocalVoice launch entry point for upstream WebUI | Currently local/untracked | May be versioned after checking for machine-specific paths; never store the launcher within upstream. |
 | `config.toml` | Existing pipeline settings and legacy data-root mapping | Tracked | Do not repurpose legacy keys or change their meanings to implement new stages. |
@@ -83,6 +84,19 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 6. Never modify upstream Irodori-TTS files to compensate for a LocalVoice issue. Keep launch/integration glue in LocalVoice, and use the upstream UI as shipped. The official UI may generate `Irodori-TTS/gradio_outputs_voicedesign/`; copy any audio worth retaining into `outputs/tts/` before a future reinstall.
 7. A proposed new module, CLI entry point, environment, or output directory needs a documented purpose and an owner in this table. If an existing location owns the responsibility, extend that implementation rather than adding another file.
 8. **Library v1 acceptance:** verify a real existing WAV subset from candidate → acoustic classification → independent identity/QC → targeted human review → versioned Japanese category folder → playback and manual selection in upstream VoiceDesign. Confirm read-only `data/`, preserved unknown/rejections, manifest provenance and immutable outputs. Full new archive-to-dataset E2E is a **later LV-R07 task**, not the current library v1 gate. Isolated module tests do not substitute for this existing-WAV E2E.
+
+## Metadata-first versioning update (2026-10-09)
+
+The metadata-first design and implementation live in
+[VERSIONED_AUDIO_METADATA.md](VERSIONED_AUDIO_METADATA.md).
+Archive the existing candidate releases **without copying audio** into
+`outputs/metadata/<profile>/versions/v1,v2`. CSV/JSON inputs are retained per
+version under `review/`. New versions need a full cumulative reviewer CSV and
+are stored as metadata only. A browsable WAV folder is rebuilt from the original
+source plus the version manifest **only when requested**. Do not delete legacy
+v1/v2 materializations automatically; verify old/new counts, hashes, ability
+to restore, and backups before any manual retirement. An approved
+`outputs/datasets` library remains a separate workflow.
 
 ## Implementation checkpoint — AST full-batch code added (2026-10-09)
 
