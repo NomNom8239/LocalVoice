@@ -78,6 +78,15 @@ YES
 Do **not** include SPEAKER_03 given the observed other-person and mixed voices. The silent SPEAKER_02_01 is omitted. If any other clip is uncertain, omit it too. The command will print every included filename and demand confirmation before creating the Bank.
 
 
+
+**Important for the in-progress two-hour archive:** On the originally running process, type `q` before `YES`. After pulling the corrected code, use exactly:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\localvoice.py --profile LV_Bootstrap_Test --resume-bootstrap bootstrap_acceptance_001
+~~~
+
+Replace with the actual profile and run name. **Do not add `--classify-after-bootstrap`**, which would run pyannote over the full long archive again. The default command produces a Bank and stops; it **does not produce `classification.tsv` or a complete dataset from the original long archive**. Further full-archive classification, if later requested, needs another pass because the original turns were not persisted. This limitation is explicit rather than silently requiring hours of processing.
+
 The review is an interactive terminal workflow. In a non-interactive session, the process **fails closed after creating preview WAVs**. Don't substitute “longest/loudest speaker” as auto-identity.
 
 ## Candidate quality gates and stored outputs
@@ -138,7 +147,7 @@ AST classification and metadata versioning remain an independent phase: `style-b
 
 ## Failure, restart and non-goals
 
-- `--force` deletes an **existing run directory** and must not be used casually. Use `--resume-bootstrap <existing-run-name>` after canceling at speaker selection to **reuse existing preview WAVs without re-downloading or running audio-separator**. In resume mode, classification reruns pyannote once because its previous turn sequence was not persisted. Use `--resume-vocals <same-Vocals.wav>` for runs originally created with `--vocals` (no `separated/` outputs).
+- `--force` deletes an **existing run directory** and must not be used casually. Use `--resume-bootstrap <existing-run-name>` after canceling at speaker selection to **reuse the preview WAVs and build ONLY the Reference Bank**, without downloading, separating or reading full Vocals, running pyannote, or classifying the full archive. This intentionally stops after Bank creation. A separate explicit `--classify-after-bootstrap` switch opts into the expensive full-archive diarization (which may take hours). For originally `--vocals` runs, that explicit opt-in also needs `--resume-vocals <same-Vocals.wav>`. Prior diarization turns from interrupted legacy runs were not saved, so the full classification cannot be resumed without recomputing them. Once Bank-only resume succeeds, the same resume command is blocked by existing-Bank protection; do not try to bypass that safeguard.
 - If the Bank subprocess crashes, inspect the report and staged WAVs and don't rely on an incomplete NPZ/JSON. The CLI refuses an inconsistent partial Bank rather than destroying it.
 - If too few safe 2–20-second turns exist, use a cleaner/longer archive or manually collect at least 3 verified WAVs with the existing `build_reference_bank.py`. There is no silent downgrade to an unidentified speaker.
 - Source cache IDs are still based on yt-dlp IDs and **can collide across platforms**. Do not claim safe multi-site collection E2E before LV-R07 addresses namespacing.
@@ -148,7 +157,8 @@ AST classification and metadata versioning remain an independent phase: `style-b
 
 - [ ] A fresh `New_Speaker` with no Bank: `--url` yields Vocals → speaker previews → human label selection → `self_reference_bank.npz` + JSON → SELF/REVIEW/OTHER with a single diarization run.
 - [ ] Confirm preview playback/label prompts, including multiple labels and per-preview clip selection to exclude silence/mixed voices.
-- [ ] Cancel the original run at the selection prompt, then resume using `--resume-bootstrap <existing-run-name>` and verify no download/audio-separator re-execution.
+- [ ] Cancel the original run at the selection prompt, then resume using `--resume-bootstrap <existing-run-name>` and verify **no download, audio-separator, pyannote, full Vocals reading, or full classification** occurs.
+- [ ] Prove the default Bank-only path does not call `classify` or `diarize_turns`, and that `--classify-after-bootstrap` is the only opt-in path that invokes full-archive classification.
 - [ ] Existing Ui_Shigure Bank: ordinary classification is unchanged; it is never replaced and bootstrap preview files aren't emitted.
 - [ ] No cross-profile or previous-run files are altered; retry with fresh run name after failure.
 - [ ] Verify new output count and manually inspect selected references / SELF, REVIEW and OTHER.
