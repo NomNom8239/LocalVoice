@@ -1,0 +1,13 @@
+sample_id,category,source_path,profile,identity_review
+sample_01,normal,REPLACE_WITH_WAV_01.wav,Ui_Shigure,candidate
+sample_02,normal,REPLACE_WITH_WAV_02.wav,Ui_Shigure,candidate
+sample_03,normal,REPLACE_WITH_WAV_03.wav,Ui_Shigure,candidate
+sample_04,whisper,REPLACE_WITH_WAV_04.wav,Ui_Shigure,candidate
+sample_05,whisper,REPLACE_WITH_WAV_05.wav,Ui_Shigure,candidate
+sample_06,mixed,REPLACE_WITH_WAV_06.wav,Ui_Shigure,candidate
+sample_07,mixed,REPLACE_WITH_WAV_07.wav,Ui_Shigure,candidate
+sample_08,nonverbal,REPLACE_WITH_WAV_08.wav,Ui_Shigure,candidate
+sample_09,nonverbal,REPLACE_WITH_WAV_09.wav,Ui_Shigure,candidate
+sample_10,nonverbal,REPLACE_WITH_WAV_10.wav,Ui_Shigure,candidate
+sample_11,silence_noise,REPLACE_WITH_WAV_11.wav,Ui_Shigure,unknown
+sample_12,other_overlap,REPLACE_WITH_WAV_12.wav,Ui_Shigure,unknown
