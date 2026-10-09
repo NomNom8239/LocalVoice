@@ -245,6 +245,204 @@ def merge_diarization_turns(
     return segments, overlap_skipped
 
 
+
+BOOTSTRAP_MIN_DURATION = 2.0
+BOOTSTRAP_MAX_DURATION = 20.0
+BOOTSTRAP_MAX_REFERENCE_CLIPS = 24
+BOOTSTRAP_PREVIEWS_PER_SPEAKER = 3
+BOOTSTRAP_MAX_CLIPPING_RATIO = 0.005
+
+
+def diarize_turns(
+    config: dict, vocals: Path, audio: np.ndarray, sample_rate: int,
+    device: torch.device,
+) -> list[tuple[float, float, str]]:
+    """Run diarization once; bootstrap and final classification share the turns."""
+    pipeline = Pipeline.from_pretrained(
+        config["models"]["pyannote_pipeline"], token=True,
+    )
+    pipeline.to(device)
+    print(f"Device: {device}")
+    print("Running diarization...")
+    with ProgressHook() as hook:
+        result = pipeline(
+            {
+                "waveform": torch.from_numpy(audio.reshape(1, -1).copy()),
+                "sample_rate": sample_rate,
+                "uri": vocals.stem,
+            },
+            hook=hook,
+        )
+    return [
+        (float(turn.start), float(turn.end), speaker)
+        for turn, speaker in result.speaker_diarization
+    ]
+
+
+def spaced_samples(items: list, count: int) -> list:
+    """Pick across the timeline instead of just the beginning of an archive."""
+    if len(items) <= count:
+        return list(items)
+    if count <= 1:
+        return [items[len(items) // 2]]
+    return [
+        items[round(i * (len(items) - 1) / (count - 1))]
+        for i in range(count)
+    ]
+
+
+def reference_candidates(
+    audio: np.ndarray, sample_rate: int,
+    turns: list[tuple[float, float, str]],
+) -> dict[str, list[tuple[float, float, str]]]:
+    """Select speech-sized non-overlapping turns. This is QC, NOT identity proof."""
+    candidates: dict[str, list[tuple[float, float, str]]] = {}
+    for start, end, speaker in sorted(turns):
+        duration = end - start
+        if not BOOTSTRAP_MIN_DURATION <= duration <= BOOTSTRAP_MAX_DURATION:
+            continue
+        if any(
+            other != speaker and a < end and b > start
+            for a, b, other in turns
+        ):
+            continue
+        begin = max(0, int(start * sample_rate))
+        finish = min(len(audio), int(end * sample_rate))
+        clip = audio[begin:finish]
+        if len(clip) < BOOTSTRAP_MIN_DURATION * sample_rate:
+            continue
+        rms = float(np.sqrt(np.mean(np.square(clip))))
+        if not np.isfinite(rms) or rms < MIN_RMS:
+            continue
+        clipped = float(np.mean(np.abs(clip) >= 0.999))
+        if clipped > BOOTSTRAP_MAX_CLIPPING_RATIO:
+            continue
+        candidates.setdefault(speaker, []).append((start, end, speaker))
+    return candidates
+
+
+def write_bootstrap_clip(
+    audio: np.ndarray, sample_rate: int,
+    turn: tuple[float, float, str], path: Path,
+) -> None:
+    start, end, _ = turn
+    begin = max(0, int(start * sample_rate))
+    finish = min(len(audio), int(end * sample_rate))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        raise FileExistsError(f"Refusing to overwrite bootstrap WAV: {path}")
+    sf.write(path, audio[begin:finish], sample_rate, subtype="PCM_16")
+
+
+def choose_bootstrap_speakers(
+    candidates: dict[str, list[tuple[float, float, str]]],
+    previews: dict[str, list[Path]],
+) -> list[str]:
+    """Human identifies which pyannote labels belong to the target person."""
+    if not sys.stdin.isatty():
+        raise RuntimeError(
+            "New-speaker bootstrap requires an interactive terminal. "
+            "Preview WAVs are under the run's bootstrap/previews directory. "
+            "Run this command interactively with a new --run-name; "
+            "no Reference Bank was created."
+        )
+    labels = set(candidates)
+    print("\nReference Bank bootstrap: identify the TARGET speaker.")
+    print("Pyannote labels are anonymous; the same person may have multiple labels.")
+    print("Type 'p SPEAKER_00' to play previews, or comma-separated labels to select.")
+    print("If no label is reliably the target, type q. Other labels are NOT negatives.")
+    while True:
+        raw = input("Target speaker label(s) [p <label> / labels / q]: ").strip()
+        if raw.lower() in {"q", "quit"}:
+            raise RuntimeError("Bootstrap canceled: no Reference Bank was created.")
+        if raw.lower().startswith("p "):
+            label = raw[2:].strip()
+            if label not in previews:
+                print("Unknown label:", label)
+                continue
+            if shutil.which("ffplay") is None:
+                print("ffplay is unavailable; open these WAV files manually:")
+                for wav in previews[label]:
+                    print(" ", wav)
+            else:
+                for wav in previews[label]:
+                    run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(wav)])
+            continue
+        selected = list(dict.fromkeys(v.strip() for v in raw.split(",") if v.strip()))
+        if not selected or any(label not in labels for label in selected):
+            print("Select one or more displayed labels, or q to cancel.")
+            continue
+        if sum(len(candidates[label]) for label in selected) < 3:
+            print("Fewer than three eligible reference clips; select another archive.")
+            continue
+        print("Target labels:", ", ".join(selected))
+        print("Only select multiple labels if you heard the SAME person in each.")
+        if input("Confirm these are the target person's voice [type YES]: ").strip() == "YES":
+            return selected
+        print("Not confirmed. Review the previews or cancel.")
+
+
+def bootstrap_reference_bank(
+    config: dict, profile: str, vocals: Path, output_dir: Path,
+) -> list[tuple[float, float, str]]:
+    """Bootstrap a new profile after separation, with one human speaker decision."""
+    ref_root = reference_dir(config, profile)
+    bank_path = ref_root / "self_reference_bank.npz"
+    report_path = ref_root / "self_reference_bank.json"
+    if bank_path.exists() or report_path.exists():
+        raise RuntimeError(
+            f"Reference Bank already exists or is incomplete: {ref_root}. "
+            "Refusing to overwrite; inspect it before retrying."
+        )
+    audio, sample_rate = load_audio_mono(vocals)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    turns = diarize_turns(config, vocals, audio, sample_rate, device)
+    candidates = reference_candidates(audio, sample_rate, turns)
+    if not candidates:
+        raise RuntimeError(
+            "No non-overlapping 2–20 second speech turns qualified for bootstrap. "
+            "Use a longer/cleaner archive or prepare reference clips manually."
+        )
+    previews: dict[str, list[Path]] = {}
+    for speaker, valid in sorted(candidates.items()):
+        print(f"Speaker {speaker}: {len(valid)} qualifying speech clips")
+        wavs = []
+        for index, turn in enumerate(
+            spaced_samples(valid, BOOTSTRAP_PREVIEWS_PER_SPEAKER), 1
+        ):
+            path = output_dir / "bootstrap" / "previews" / f"{speaker}_{index:02d}.wav"
+            write_bootstrap_clip(audio, sample_rate, turn, path)
+            wavs.append(path)
+            print("  preview:", path)
+        previews[speaker] = wavs
+
+    selected = choose_bootstrap_speakers(candidates, previews)
+    pool = sorted(
+        [turn for label in selected for turn in candidates[label]]
+    )
+    chosen = spaced_samples(pool, BOOTSTRAP_MAX_REFERENCE_CLIPS)
+    if len(chosen) < 3:
+        raise RuntimeError("Not enough eligible reference WAVs to build the bank.")
+    stage = output_dir / "bootstrap" / "selected_reference_wavs"
+    for index, turn in enumerate(chosen, 1):
+        write_bootstrap_clip(
+            audio, sample_rate, turn, stage / f"ref_{index:03d}.wav"
+        )
+    print(f"Selected {len(chosen)} reference WAVs in {stage}.")
+    print("These are PROVISIONAL references, not a guarantee of speaker identity.")
+    if bank_path.exists() or report_path.exists():
+        raise RuntimeError("Concurrent or incomplete Reference Bank detected; refusing overwrite.")
+    run([
+        sys.executable, str(Path(__file__).with_name("build_reference_bank.py")),
+        "--profile", profile, "--source", str(stage),
+    ])
+    if not bank_path.is_file() or not report_path.is_file():
+        raise RuntimeError("Reference Bank subprocess ended without complete output.")
+    print("Reference Bank created. Inspect 'Lowest similarity clips' for mistakes.")
+    print("Thresholds use config.toml defaults until verified negatives are provided.")
+    return turns
+
+
 def classify(
     config: dict,
     profile: str,
@@ -253,6 +451,7 @@ def classify(
     accept_threshold: float,
     review_threshold: float,
     top_k: int,
+    precomputed_turns: list[tuple[float, float, str]] | None = None,
 ) -> None:
     reference_path = reference_dir(
         config,
@@ -275,31 +474,12 @@ def classify(
     audio, sample_rate = load_audio_mono(vocals)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    pipeline = Pipeline.from_pretrained(
-        config["models"]["pyannote_pipeline"],
-        token=True,
-    )
-    pipeline.to(device)
+    if precomputed_turns is None:
+        turns = diarize_turns(config, vocals, audio, sample_rate, device)
+    else:
+        turns = precomputed_turns
+        print("Reusing diarization from Reference Bank bootstrap.")
 
-    print(f"Device: {device}")
-    print("Running diarization...")
-
-    with ProgressHook() as hook:
-        result = pipeline(
-            {
-                "waveform": torch.from_numpy(
-                    audio.reshape(1, -1).copy()
-                ),
-                "sample_rate": sample_rate,
-                "uri": vocals.stem,
-            },
-            hook=hook,
-        )
-
-    turns = [
-        (float(turn.start), float(turn.end), speaker)
-        for turn, speaker in result.speaker_diarization
-    ]
     segments, overlap_skipped = merge_diarization_turns(
         turns,
         max_gap=MAX_MERGE_GAP_SECONDS,
@@ -438,7 +618,7 @@ def classify(
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "One-command target-speaker extraction from YouTube, "
+            "Target-speaker extraction, with interactive Reference Bank bootstrap when needed, from "
             "mixed WAV, or a Vocals WAV."
         )
     )
@@ -515,6 +695,14 @@ def main() -> None:
         if not vocals.exists():
             raise FileNotFoundError(vocals)
 
+    reference_file = reference_dir(config, args.profile) / "self_reference_bank.npz"
+    bootstrap_turns = None
+    if not reference_file.is_file():
+        print("Reference Bank missing: starting first-speaker bootstrap.")
+        bootstrap_turns = bootstrap_reference_bank(
+            config, args.profile, vocals, output_dir,
+        )
+
     classify(
         config,
         args.profile,
@@ -523,6 +711,7 @@ def main() -> None:
         accept_threshold,
         review_threshold,
         top_k,
+        precomputed_turns=bootstrap_turns,
     )
 
 
