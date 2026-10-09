@@ -61,7 +61,7 @@
 <div class="row" style="margin-top:12px"><label class="checkbox-inline"><input id="autoAdvance" type="checkbox" checked>判定したら次の未判定へ移動</label></div>
 <div class="line"></div>
 <h3>聴感分類・本人性・音質のメモ</h3>
-<p class="hint">元のAST分類は固定のまま、「手動分類」で聞こえたカテゴリを修正できます。本人性と録音品質は独立して記録します。</p>
+<p class="hint">元のAST分類は固定のまま、「手動分類」で聞こえたカテゴリを修正できます。本人性と録音品質は独立して記録します。<strong>カテゴリだけ変更した音声は「要確認」に留まり、利用候補にするには「採用」＋「本人」＋「品質問題なし」が必要</strong>です。</p>
 <div class="flexform">
  <div><label for="manualCategory">手動分類（空欄＝元のAST分類）</label><select id="manualCategory"><option value="">AST候補を維持</option></select></div>
  <div><label for="identity">話者</label><select id="identity"><option value="unverified">未確認</option><option value="self">本人と確認</option><option value="other">他人声</option><option value="overlap">複数話者・混話</option><option value="uncertain">判定不能</option></select></div>
@@ -80,7 +80,7 @@
  <button id="exportReview" class="primary" type="button">レビューJSONを保存</button>
  <button id="exportCsv" type="button">判断CSVを保存</button>
 </div>
-<p class="hint">保存JSONにはソースID、SHA-256、判定・手動分類・本人性・音質・メモだけを含みます。音声そのものは含まれません。読み込み時にライブラリのプロファイル・run・入力指紋・ファイルSHAと照合します。</p>
+<p class="hint">保存JSONにはソースID、SHA-256、判定・手動分類・本人性・音質・メモだけを含みます。音声そのものは含まれません。読み込み時にライブラリのプロファイル・run・入力指紋・記録上のWAV SHAとAST分類を照合します。原本WAVのバイトSHA照合は <code>metadata verify</code> で行ってください。</p>
 <div id="status" class="message" role="status">v2候補フォルダ、またはメタデータと原本audioを選んでください。</div>
 <details><summary>安全性と制限</summary><p>外部通信・音声のアップロード・Cookie・追跡はありません。HTMLは端末上で完結し、採用しても元WAVや暫定ライブラリを変更しません。保存ファイルはダウンロードフォルダへ生成するだけです。レビュー結果を正式版 <code>outputs/datasets/</code> に反映する処理は別工程です。</p><p class="warning">ブラウザ内で採用しただけでは本人確認・QC承認は完了しません。たとえば話者「本人と確認」および録音品質「問題なし」を記録することはできますが、それを人手で確認した範囲でだけ有効なレビュー証跡として扱ってください。</p></details>
 </section>
@@ -222,7 +222,7 @@ function boot(){for(const [key,label] of CATEGORIES){for(const id of ['categoryF
  try{await loadMetadataFolder(list);}catch(err){tell('メタデータ読込中断: '+err.message,true);}finally{e.target.value='';}};
  byId('originalDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存レビューを破棄しますか？')){e.target.value='';return;}
  try{await loadOriginalFolder(list);}catch(err){tell('元WAV読込中断: '+err.message,true);}finally{e.target.value='';}};
- byId('savedReview').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if(state.dirty&&!window.confirm('未保存レビューをCSV/JSONで置き換えますか？'))return;await importReview(f);}catch(err){tell('レビュー復元中断: '+err.message,true);}finally{e.target.value='';}};
+ byId('savedReview').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{if((state.dirty||state.review.size>0)&&!window.confirm('既存'+state.review.size+'件のレビューを選んだCSV/JSONで置き換えますか？欠落IDは拒否します。'))return;await importReview(f);}catch(err){tell('レビュー復元中断: '+err.message,true);}finally{e.target.value='';}};
  byId('priority').onclick=()=>{state.mode='priority';byId('priority').classList.add('selected');byId('all').classList.remove('selected');filterList();};byId('all').onclick=()=>{state.mode='all';byId('all').classList.add('selected');byId('priority').classList.remove('selected');filterList();};
  for(const id of ['search','categoryFilter','decisionFilter','onlyPending'])byId(id).addEventListener(id==='search'?'input':'change',()=>filterList());
  byId('prev').onclick=()=>move(-1);byId('forward').onclick=()=>move(1);byId('next').onclick=nextUnreviewed;
