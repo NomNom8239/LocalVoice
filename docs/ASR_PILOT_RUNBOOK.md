@@ -1,6 +1,6 @@
 # Phase 3 — 12音声ASR Pilot実行手順（Windows）
 
-状態：実装済み／**実GPU未検証**。Phase 3完了ではない。公式IrodoriはTTSであり、これはLocalVoiceの独立したASR比較。旧LoRAやIrodoriクローンの変更は不要。
+状態（2026-10-09）：**Kotoba-Whisper v2.0とWhisper large-v3の実CUDA 12件Pilotはどちらも12/12処理成功**。ただし人工無音で両モデルに幻覚テキスト、Whisperの短い非言語音声で大量反復を確認。モデルの正式採用・48件評価は保留。**ASR48件比較は、最優先のカテゴリ別参照WAVライブラリv1（LV-R04/06/05）の必須前提ではない。** 公式IrodoriはTTSであり、旧LoRAや公式クローンの変更は不要。
 
 ## 公式リファレンス
 
@@ -64,7 +64,7 @@ PowerShellでは行末の`はバッククォート（継続記号）。`VALID: 1
 
 ## 3. 同じ入力を1モデルずつ推論
 
-**seal / validate成功後のみ実行。** 大きなモデルの初回ダウンロードが必要。RTX 5060 Ti上のCUDA動作はこの段階で初めて確認する。
+**seal / validate成功後のみ実行。** 初回モデルダウンロードが必要な場合がある。RTX 5060 Tiの実CUDA動作は2026-10-09の12件Pilotで両モデル確認済み。ただし別run・別モデル設定での成功は保証しない。
 
 ~~~powershell
 .\.venv\Scripts\python.exe -m localvoice asr-pilot run `
@@ -96,11 +96,11 @@ work/
 
 `run_manifest.json`の`status=completed`、`completed=12`、`failed=0`で技術的なPilot処理成功（音声認識品質は未承認）。`transcription.jsonl`は各WAV全体の証跡行を残す。元WAVの0〜末尾は、発話が本当に存在した区間とは限らない。ASRが喘ぎ/笑いに誤テキストを出しても`speech_candidate`扱いに留め、正解ラベルにしない。
 
-Pilot12件の結果だけでモデル採用や一括ASR実行を決定しない。次の固定48件比較は別ゲート。音声そのものや生のログはGitへcommitしない。
+Pilot12件の結果だけでモデル採用や一括ASR実行を決定しない。固定48件比較は**後続ASR正式採用の別ゲート**として保留。LV-R04音響分類・LV-R06 QC/レビュー・LV-R05カテゴリ別ライブラリの進行を止めない。音声そのものや生のログはGitへcommitしない。
 
 ## スコープ
 
 - 既存`data/`に書込み禁止。公式`Irodori-TTS/`にも独自コードを置かない。
 - 旧ASR・LoRA・Emoji分類を復活させない。
-- テストはモデルをMock化したオフラインの安全性検証。実モデル、Windows、GPU・精度は**未検証**。
+- オフラインの単体テストはモデルをMock化した安全性検証。Windows上の実モデル/CUDA 12件処理は**実施済み**だが、正解音声に対するASR精度・モデル正式採用は**未検証**。
 - 最終的な通常会話/笑い/喘ぎ/息切れの日本語カテゴリフォルダはPhase 5。
