@@ -139,7 +139,7 @@ def test_main_without_bank_invokes_bootstrap_for_vocals(tmp_path, monkeypatch):
     bank = tmp_path / "ref"
     monkeypatch.setattr(module, "load_config", lambda *_: {})
     monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
-    monkeypatch.setattr(module, "run_dir", lambda *args: root)
+    monkeypatch.setattr(module, "run_dir", lambda config, profile: root / profile)
     monkeypatch.setattr(module, "reference_dir", lambda *args: bank)
     monkeypatch.setattr(module, "project_path", lambda value: Path(value))
     seen = []
@@ -162,7 +162,7 @@ def test_main_existing_bank_skips_bootstrap(tmp_path, monkeypatch):
     (reference / "self_reference_bank.json").write_text("{}")
     monkeypatch.setattr(module, "load_config", lambda *_: {})
     monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
-    monkeypatch.setattr(module, "run_dir", lambda *args: root)
+    monkeypatch.setattr(module, "run_dir", lambda config, profile: root / profile)
     monkeypatch.setattr(module, "reference_dir", lambda *args: reference)
     monkeypatch.setattr(module, "project_path", lambda value: Path(value))
     monkeypatch.setattr(
@@ -176,6 +176,7 @@ def test_main_existing_bank_skips_bootstrap(tmp_path, monkeypatch):
     assert len(called) == 1
     assert called[0]["precomputed_turns"] is None
     assert (reference / "self_reference_bank.npz").read_bytes() == b"EXISTING"
+    assert (root / "Existing" / "existing").is_dir()
     assert not (root / "Existing" / "existing" / "bootstrap").exists()
 
 
@@ -198,7 +199,7 @@ def test_main_incomplete_bank_refuses_classification(tmp_path, monkeypatch):
     (ref / "self_reference_bank.npz").write_bytes(b"PARTIAL")
     monkeypatch.setattr(module, "load_config", lambda *_: {})
     monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
-    monkeypatch.setattr(module, "run_dir", lambda *args: tmp_path / "runs")
+    monkeypatch.setattr(module, "run_dir", lambda config, profile: tmp_path / "runs" / profile)
     monkeypatch.setattr(module, "reference_dir", lambda *args: ref)
     monkeypatch.setattr(module, "project_path", lambda path: Path(path))
     monkeypatch.setattr(module, "classify", lambda *args, **kwargs: pytest.fail("must fail before scoring"))
@@ -206,3 +207,4 @@ def test_main_incomplete_bank_refuses_classification(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Incomplete Reference Bank"):
         module.main()
     assert (ref / "self_reference_bank.npz").read_bytes() == b"PARTIAL"
+    assert not (tmp_path / "runs").exists()
