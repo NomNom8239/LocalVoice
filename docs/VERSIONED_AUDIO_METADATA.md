@@ -76,3 +76,96 @@ Unreviewed clips retain the AST category and are **not automatically approved**.
   completed AST run must be retained or backed up to enable restoration.
 - Do not infer that a CSV alone recreates audio; an external audio backup and
   historical version metadata are necessary.
+
+## Windows migration and new revisions
+
+All commands below use the repository-local `.venv` and the existing completed
+AST run. They **never** remove the old materialized `v1/` and `v2/`.
+
+```powershell
+cd F:\AIProjects\LocalVoice
+git fetch origin
+git switch feature/versioned-review-metadata
+git pull --ff-only origin feature/versioned-review-metadata
+.\.venv\Scripts\python.exe -m pytest tests/test_style_batch.py tests/test_review_export.py -q
+
+$runId = "ast_batch_20261009_163035451"
+$csv = "$env:USERPROFILE\Downloads\localvoice_ast_review_decisions_v1.csv"
+Test-Path $csv
+```
+
+Archive original AST v1 (dry-run then execute):
+
+```powershell
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata archive `
+  --run-id $runId --version v1 --dry-run
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata archive `
+  --run-id $runId --version v1
+```
+
+Archive reviewed v2, **using the exact original CSV** (its SHA must match
+`v2/summary.json`). Supply `--review-json <path>` if the saved HTML JSON
+is available. It is optional; the v2 CSV + full manifest are sufficient to
+preserve recorded decisions.
+
+```powershell
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata archive `
+  --run-id $runId --version v2 --review-csv $csv --dry-run
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata archive `
+  --run-id $runId --version v2 --review-csv $csv
+```
+
+The CSV and optional JSON are copied under
+`outputs/metadata/Ui_Shigure/versions/v2/review/`; a dedicated
+`outputs/metadata/Ui_Shigure/inbox/` is also created so later downloaded
+CSV/JSON files can be gathered in one place.
+
+Verify the history and source WAVs:
+
+```powershell
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata verify --profile Ui_Shigure --version v1
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata verify --profile Ui_Shigure --version v2
+
+Get-ChildItem ".\outputs\metadata\Ui_Shigure" -Recurse -Filter *.wav
+```
+
+The final command should return **no WAV files** under `outputs/metadata/`.
+Archived versions must each show `wav_referenced=1167` and zero WAV copies
+created. v1/v2 original directories stay intact until separately retired.
+
+For **new** HTML review results, first reload earlier saved HTML JSON to
+keep previous decisions, export a *cumulative* CSV, and place the CSV/JSON in
+`outputs/metadata/Ui_Shigure/inbox/`. Then:
+
+```powershell
+$newCsv = ".\outputs\metadata\Ui_Shigure\inbox\localvoice_ast_review_decisions_v2.csv"
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata revise `
+  --profile Ui_Shigure --from-version v2 --version v3 `
+  --review-csv $newCsv --dry-run
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata revise `
+  --profile Ui_Shigure --from-version v2 --version v3 `
+  --review-csv $newCsv
+```
+
+If an accompanying HTML JSON exists, add `--review-json <path>` to the
+`archive` or `revise` commands. Each version records exact raw CSV/JSON bytes
+and their SHA-256. The v3 command **does not copy audio**. If you want to
+browse old or new categories in Explorer, regenerate a separate folder:
+
+```powershell
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata materialize `
+  --profile Ui_Shigure --version v1 --output-name restored-v1 --dry-run
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata materialize `
+  --profile Ui_Shigure --version v1 --output-name restored-v1
+```
+
+The same process works for `v2` or `v3` with a **new unused output name**.
+This copies WAVs into `outputs/candidates/Ui_Shigure/restored-v1/` only on
+explicit request. Interrupted materialization can continue with `--resume`
+using the same input parameters. Nothing overwrites another completed folder.
+
+**Storage note:** Existing v1/v2 WAV folders consume disk until manually
+retired. This migration does not reclaim disk immediately. Do not delete them
+until both metadata archives verify, a restoration has succeeded, and original
+audio plus metadata have appropriate backups. The original audio remains
+necessary for future restoration; metadata/CSV alone cannot recreate bytes.
