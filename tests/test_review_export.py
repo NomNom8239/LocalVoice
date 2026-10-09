@@ -228,6 +228,16 @@ def test_metadata_revise_cumulative_review_without_copy_and_restore(prepared):
     restored = v1.parent / "restored-v3"
     assert len(list((restored / "audio").rglob("*.wav"))) == 4
     assert (restored / "audio" / "02_囁き").is_dir()
+    assert (restored / "README.txt").exists()
+    assert (restored / "version_receipt.json").exists()
+    summary = json.loads((restored / "summary.json").read_text(encoding="utf-8"))
+    assert summary["audio_files_stored"] == 4
+    assert summary["tier"] == "UNVERIFIED_MATERIALIZED_CANDIDATE"
+    with (restored / "reviewed_usable.csv").open(encoding="utf-8-sig", newline="") as f:
+        assert len(list(csv.DictReader(f))) == 2
+    with (restored / "needs_attention.csv").open(encoding="utf-8-sig", newline="") as f:
+        assert len(list(csv.DictReader(f))) == 2
+    assert (restored / "review" / "review_decisions.csv").read_bytes() == csv_file.read_bytes()
     with pytest.raises(FileExistsError, match="will not be overwritten"):
         catalog.materialize("Ui_Shigure", "v3", "restored-v3")
     assert len(list((v1.parent / "v2" / "audio").rglob("*.wav"))) == 4
