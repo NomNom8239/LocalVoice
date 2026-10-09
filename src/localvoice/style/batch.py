@@ -173,6 +173,13 @@ def _load_ast(device: str):
     return pilot._load_pipeline("ast", device)
 
 
+def _excel_safe(value: Any) -> Any:
+    """Prevent source-supplied names/error text becoming Excel CSV formulas."""
+    if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
 def _candidate(raw: list[dict[str, Any]], min_score: float, top_ratio: float
                ) -> tuple[str, str | None, float | None, dict[str, float | None], list[dict[str, Any]]]:
     scores, raw_top = pilot._summarize("ast", raw)
@@ -413,7 +420,8 @@ def export(run_id: str, version: str, resume: bool) -> Path:
     index_buffer = io.StringIO(newline="")
     writer = csv.DictWriter(index_buffer, fieldnames=list(index_rows[0]))
     writer.writeheader()
-    writer.writerows(index_rows)
+    writer.writerows([{key: _excel_safe(value) for key, value in row.items()}
+                      for row in index_rows])
     _stage_text(stage / "index.csv", index_buffer.getvalue(), resume=resume,
                 encoding="utf-8-sig")
     readme = (
