@@ -6,7 +6,7 @@
 
 **必読： [ディレクトリ責務・追加ルール](docs/PROJECT_LAYOUT.md)** — `data/` 保全、公式Irodoriへの独自ファイル追加禁止、新規コード・一時出力・成果物の保存先を定義しています。下記のパイプラインとパス説明は、既存の取得・RVC処理についての説明です。
 
-**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**ASR12音声Pilotは `feature/phase3-asr-pilot` で実装済み、Kotoba/Whisperとも実CUDAで12/12処理済み**（モデル正式採用・48件比較は後続保留）。[ASR手順](docs/ASR_PILOT_RUNBOOK.md) を参照。**LV-R04音響分類Pilotは `feature/phase4-acoustic-pilot` に追加済みだが、実モデルのCUDA動作・分類品質は未検証。** [AST/CLAP音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)。最優先の成果物は既存1,167件からの日本語カテゴリ別参照WAVライブラリv1で、音響分類・QC・レビュー・出力はまだ未完成。
+**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**ASR12音声Pilotは `feature/phase3-asr-pilot` で実装済み、Kotoba/Whisperとも実CUDAで12/12処理済み**（モデル正式採用・48件比較は後続保留）。[ASR手順](docs/ASR_PILOT_RUNBOOK.md) を参照。**LV-R04はASTによる既存1,167WAVの実機分類が完了（unknown=5、errors=0）。** [AST/CLAP音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)。未確認候補ライブラリv1はWindows実機で1,167WAV出力を確認済み。ブラウザレビューCSVを反映するv2生成コマンドを追加し、本人性・品質の最終承認は別工程とする。
 
 ## ASTの一括カテゴリ整理（暫定ライブラリ）
 
@@ -16,7 +16,18 @@
 - CLI：`python -m localvoice style-batch inventory|run|summary|export`
 - 中断後の `run --resume`、コピー中断後の `export --resume-export`、元WAVのSHA検証、未分類/失敗の保全に対応
 - 暫定出力：`outputs/candidates/Ui_Shigure/v1/audio/<日本語カテゴリ>/`（**未確認**、正式承認済みの `outputs/datasets/` とは別）
-- 現時点で**Windows/GPUでの実バッチ処理は未確認**。機械分類結果は人手承認/本人確認/音質保証ではありません。
+- **Windows実機AST処理完了：1,167/1,167、未分類5件、推論エラー0件。** 機械分類結果は人手承認/本人確認/音質保証ではありません。
+
+## HTMLレビューCSVの反映（v2）
+
+以前のASRレビューHTMLを基にしたブラウザ画面で保存した `localvoice_ast_review_decisions_v1.csv` を
+SHA照合付きで取り込み、**v1を変更せず**カテゴリ修正版 `outputs/candidates/Ui_Shigure/v2/` を作成する。
+
+- [Windows CSV反映→不変候補ライブラリv2手順](docs/REVIEW_CSV_APPLY_RUNBOOK.md)
+- CLI：`python -m localvoice style-batch apply-review --run-id <AST run ID> --review-csv <file.csv> --source-version v1 --version v2 --dry-run`
+- `keep + identity=self + quality=ok` のみ「レビュー適合候補」。品質・本人性に注意が必要な音声、保留、除外は別フォルダへ
+- CSVに無いWAVも消さず、既存AST分類で保持。正式な `outputs/datasets/` への自動昇格はしない
+- CSVと原本候補を照合できない場合は実行を中断。途中コピーは同じCSVの `--resume-export` で再開
 
 ## Pipeline
 
