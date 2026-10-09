@@ -187,3 +187,67 @@ def test_weak_unmapped_acoustic_scores_abstain():
     assert label == "99_未分類_要確認"
     assert category is None and score is None
     assert scores["normal_speech"] == 0.001
+
+def test_windows_transient_permission_error_retries_atomic_checkpoint(tmp_path, monkeypatch):
+    state_path = tmp_path / "run_manifest.json"
+    state_path.write_text('{"status": "old"}', encoding="utf-8")
+    actual_replace = batch.os.replace
+    attempts = []
+
+    def transient_lock(source, dest):
+        attempts.append((source, dest))
+        if len(attempts) <= 2:
+            raise PermissionError("simulated transient Windows sharing restriction")
+        return actual_replace(source, dest)
+
+    monkeypatch.setattr(batch.os, "replace", transient_lock)
+    monkeypatch.setattr(batch.time, "sleep", lambda seconds: None)
+    batch._atomic_json(state_path, {"status": "updated"})
+    assert len(attempts) == 3
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {"status": "updated"}
+    assert not (tmp_path / "run_manifest.json.writing").exists()
+
+
+def test_checkpoint_persistent_permission_error_preserves_previous_state(tmp_path, monkeypatch):
+    state_path = tmp_path / "run_manifest.json"
+    state_path.write_text('{"status": "old"}', encoding="utf-8")
+    actual_replace = batch.os.replace
+    attempts = []
+
+    def permanent_lock(source, dest):
+        attempts.append((source, dest))
+        raise PermissionError("simulated persistent Windows lock")
+
+    monkeypatch.setattr(batch.os, "replace", permanent_lock)
+    monkeypatch.setattr(batch.time, "sleep", lambda seconds: None)
+    with pytest.raises(PermissionError, match="after 8 attempts"):
+        batch._atomic_json(state_path, {"status": "new"})
+    assert len(attempts) == 8
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {"status": "old"}
+    assert (tmp_path / "run_manifest.json.writing").exists()
+    monkeypatch.setattr(batch.os, "replace", actual_replace)
+    batch._atomic_json(state_path, {"status": "recovered"})
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {"status": "recovered"}
+    assert not (tmp_path / "run_manifest.json.writing").exists()
+
+
+def test_resume_after_final_state_checkpoint_failure_reuses_saved_results(library, monkeypatch):
+    root, original, before = library
+    original_atomic = batch._atomic_json
+
+    def blocked_last_checkpoint(path, state):
+        if state.get("status") == "completed":
+            raise PermissionError("simulated state checkpoint lock after JSONL persisted")
+        return original_atomic(path, state)
+
+    monkeypatch.setattr(batch, "_atomic_json", blocked_last_checkpoint)
+    with pytest.raises(PermissionError, match="checkpoint lock"):
+        _run(run_id="checkpoint_lock")
+    results_path = root / "work" / "checkpoint_lock" / "style_predictions.jsonl"
+    assert len(batch._read_jsonl(results_path)) == 3
+    monkeypatch.setattr(batch, "_atomic_json", original_atomic)
+    assert _run(resume=True, run_id="checkpoint_lock") == 0
+    assert len(batch._read_jsonl(results_path)) == 3  # not recomputed or duplicated
+    assert batch.summary("checkpoint_lock")["processed"] == 3
+    assert before == {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                      for p in original.iterdir()}
