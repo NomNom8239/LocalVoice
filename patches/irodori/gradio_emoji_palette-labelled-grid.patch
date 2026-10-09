@@ -1,0 +1,166 @@
+diff --git a/irodori_tts/gradio_emoji_palette.py b/irodori_tts/gradio_emoji_palette.py
+--- a/irodori_tts/gradio_emoji_palette.py
++++ b/irodori_tts/gradio_emoji_palette.py
+@@ -19,41 +19,63 @@
+ }
+ 
+ .emoji-palette-grid {
++    display: grid;
++    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
++    gap: 6px;
++    align-items: stretch;
++    max-height: min(56vh, 420px);
++    overflow-y: auto;
++    padding: 2px;
++}
++
++button.emoji-palette-button {
+     display: flex;
++    align-items: center;
++    gap: 10px;
++    width: 100%;
++    min-width: 0;
++    min-height: 52px;
++    padding: 7px 10px;
++    border: 1px solid var(--border-color-primary, #d1d5db);
++    border-radius: 7px;
++    background: var(--background-fill-secondary, transparent);
++    color: var(--body-text-color, inherit);
++    text-align: left;
++    cursor: pointer;
++}
++
++button.emoji-palette-button:hover {
++    background: var(--background-fill-primary, #f9fafb);
++    border-color: var(--border-color-accent, #888);
+-    gap: 3px;
+-    flex-wrap: wrap;
+-    align-items: flex-start;
+-    max-height: 124px;
+-    overflow-y: auto;
+ }
+ 
++button.emoji-palette-button:focus-visible {
++    outline: 2px solid var(--color-accent, #2563eb);
++    outline-offset: 2px;
+-.emoji-palette-button {
+-    flex: 0 0 28px !important;
+-    min-width: 28px !important;
+-    max-width: 28px !important;
+ }
+ 
++.emoji-palette-glyph {
++    flex: 0 0 30px;
++    text-align: center;
++    font-size: 23px;
+-.emoji-palette-button button {
+-    width: 28px !important;
+-    min-width: 28px !important;
+-    height: 28px !important;
+-    min-height: 28px !important;
+-    border-radius: 4px;
+-    font-size: 17px;
+     line-height: 1;
++}
++
++.emoji-palette-copy {
++    display: flex;
++    flex-direction: column;
++    min-width: 0;
++    line-height: 1.35;
++}
++
++.emoji-palette-label {
++    font-size: 13px;
++    font-weight: 600;
+-    padding: 0 !important;
+ }
+ 
++.emoji-palette-description {
++    font-size: 11px;
++    opacity: 0.76;
+-button.emoji-palette-button {
+-    width: 28px;
+-    min-width: 28px;
+-    height: 28px;
+-    min-height: 28px;
+-    border-radius: 4px;
+-    font-size: 17px;
+-    line-height: 1;
+-    padding: 0;
+-    cursor: pointer;
+ }
+ """
+ 
+@@ -68,39 +90,39 @@
+     EmojiPaletteItem("😏", "からかう", "甘えるように"),
+     EmojiPaletteItem("🥺", "震え声", "自信なさげに"),
+     EmojiPaletteItem("🌬️", "息切れ", "荒い息遣い、呼吸音"),
++    EmojiPaletteItem("😮", "息をのむ", "驚いて息を吸う音"),
+-    EmojiPaletteItem("😮", "息をのむ", "Gasp"),
+     EmojiPaletteItem("👅", "舐める音", "咀嚼音、水音"),
++    EmojiPaletteItem("💋", "リップノイズ", "唇を鳴らす音"),
++    EmojiPaletteItem("🫶", "優しく", "柔らかく親密に"),
+-    EmojiPaletteItem("💋", "リップノイズ", "Lip smack"),
+-    EmojiPaletteItem("🫶", "優しく", "Tenderly"),
+     EmojiPaletteItem("😭", "泣き声", "嗚咽、悲しみ"),
+     EmojiPaletteItem("😱", "悲鳴", "叫び、絶叫"),
+     EmojiPaletteItem("😪", "眠そう", "気だるげに"),
+     EmojiPaletteItem("😴", "寝言", "いびき"),
+     EmojiPaletteItem("⏩", "早口", "一気に、急いで"),
+     EmojiPaletteItem("📞", "電話越し", "スピーカー越し"),
++    EmojiPaletteItem("🐢", "ゆっくり", "話す速度を遅く"),
+-    EmojiPaletteItem("🐢", "ゆっくり", "Slowly"),
+     EmojiPaletteItem("🥤", "飲み込む", "唾を飲む音"),
+     EmojiPaletteItem("🤧", "咳・鼻", "咳き込み、鼻すすり"),
++    EmojiPaletteItem("😒", "舌打ち", "不満を示す舌打ち"),
+-    EmojiPaletteItem("😒", "舌打ち", "Tutting"),
+     EmojiPaletteItem("😰", "慌てる", "動揺、緊張、どもり"),
+     EmojiPaletteItem("😆", "喜び", "嬉しそうに"),
+     EmojiPaletteItem("💥", "勢いよく", "力強い勢い"),
+     EmojiPaletteItem("😠", "怒り", "不満げ、拗ねる"),
+     EmojiPaletteItem("😲", "驚き", "感嘆"),
+     EmojiPaletteItem("🥱", "あくび", "Yawn"),
++    EmojiPaletteItem("😖", "苦しげ", "苦しそうな声"),
+-    EmojiPaletteItem("😖", "苦しげ", "Agonizingly"),
+     EmojiPaletteItem("😟", "心配", "不安そうに"),
+     EmojiPaletteItem("🫣", "照れ", "恥ずかしそうに"),
++    EmojiPaletteItem("🙄", "呆れ", "うんざりした口調"),
+-    EmojiPaletteItem("🙄", "呆れ", "Exasperatedly"),
+     EmojiPaletteItem("😊", "楽しげ", "嬉しそうに"),
+     EmojiPaletteItem("😎", "得意げ", "自信ありげに"),
+     EmojiPaletteItem("👌", "相槌", "頷く音"),
+     EmojiPaletteItem("🙏", "懇願", "お願いするように"),
+     EmojiPaletteItem("🥴", "酔う", "Drunkenly"),
++    EmojiPaletteItem("🎵", "鼻歌", "鼻歌を歌う"),
++    EmojiPaletteItem("🤐", "口を塞ぐ", "こもった声"),
+-    EmojiPaletteItem("🎵", "鼻歌", "Humming"),
+-    EmojiPaletteItem("🤐", "口を塞ぐ", "Muffled"),
+     EmojiPaletteItem("😌", "安堵", "満足げに"),
++    EmojiPaletteItem("🤔", "疑問", "疑問を示す口調"),
+-    EmojiPaletteItem("🤔", "疑問", "Questioning"),
+     EmojiPaletteItem("💪", "力強く", "力を込めて"),
+     EmojiPaletteItem("👃", "嗅ぐ音", "匂いを嗅ぐ音"),
+     EmojiPaletteItem("📖", "朗読", "ナレーション"),
+@@ -139,6 +161,8 @@
+     buttons = []
+     for item in EMOJI_PALETTE_ITEMS:
+         emoji = escape(item.emoji, quote=True)
++        label = escape(item.label)
++        description = escape(item.description)
+         title = escape(f"{item.label}: {item.description}", quote=True)
+         buttons.append(
+             '<button type="button" '
+@@ -147,7 +171,11 @@
+             f'title="{title}" '
+             f'aria-label="{title}" '
+             f'onpointerdown="{handler}">'
++            f'<span class="emoji-palette-glyph" aria-hidden="true">{emoji}</span>'
++            '<span class="emoji-palette-copy">'
++            f'<span class="emoji-palette-label">{label}</span>'
++            f'<span class="emoji-palette-description">{description}</span>'
++            '</span></button>'
+-            f"{emoji}</button>"
+         )
+     return (
+         '<div class="emoji-palette-grid" '
