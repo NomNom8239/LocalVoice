@@ -71,7 +71,7 @@ outputs/datasets/<profile>/<version>/        # 別のQC/承認ゲートを経た
 
 Kotoba-Whisper v2.0とWhisper large-v3の12件CUDA Pilotは両方処理完了。人工無音でのハルシネーションや非言語での反復があり、**48件の本比較・正式モデル採用は保留**。音響スタイル分類の必須先行ゲートではありません。
 
-## Pipeline
+## 既存の配信取得・RVCパイプライン
 
 ```text
 YouTube / WAV
@@ -101,9 +101,10 @@ RVC-WebUI
 
 ```text
 LocalVoice/
+├─ README.md
+├─ localvoice_ast_candidate_reviewer.html   # 共通レビューUI（Git管理）
 ├─ config.toml
-├─ scripts/
-│  ├─ common.py
+├─ scripts/                                 # 既存の取得・話者照合・RVC用コード
 │  ├─ localvoice.py
 │  ├─ diarize.py
 │  ├─ build_reference_bank.py
@@ -111,17 +112,28 @@ LocalVoice/
 │  ├─ review_training_audio.py
 │  ├─ collect_training_audio.py
 │  └─ build_rvc_dataset.py
-└─ data/                  # generated/local data; Git 管理外
-   ├─ source/
-   ├─ wav_master/
-   ├─ diarization/
-   ├─ reference_bank/
-   ├─ runs/
-   ├─ training_audio/
-   └─ rvc_dataset/
+├─ src/localvoice/
+│  ├─ style/                                # AST分類・レビューCSV反映・メタデータ版管理
+│  └─ transcription/                        # ASR Pilot
+├─ tests/                                   # 回帰テスト
+├─ docs/                                    # 作業手順・責務の正本
+├─ work/                                    # AST等の実行証跡（Git管理外）
+├─ outputs/
+│  ├─ candidates/                          # 未承認の候補WAV・閲覧用コピー
+│  ├─ metadata/                            # 版ごとのCSV/JSON履歴（WAV複製なし）
+│  └─ datasets/                            # 正式QC承認済み出力専用（後続）
+├─ data/                                    # 原音声・legacy取得成果物（Git管理外）
+│  ├─ source/
+│  ├─ wav_master/
+│  ├─ diarization/
+│  ├─ reference_bank/
+│  ├─ runs/
+│  ├─ training_audio/
+│  └─ rvc_dataset/
+└─ Irodori-TTS/                             # 公式独立クローン（Git管理外）
 ```
 
-`data/`、音声ファイル、学習済みモデル、Python 仮想環境は Git に含めません。
+`outputs/datasets/` など将来用の場所は、この構成を示すための**責務**であり、未作成でも問題ありません。元音声・モデル・`work/`・`outputs/`・仮想環境はGitへ登録しません。原本は新分類処理から読み取り専用で扱います。
 
 ## Environment
 
