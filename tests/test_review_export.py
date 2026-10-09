@@ -45,6 +45,26 @@ def prepared(tmp_path, monkeypatch):
     (run/'input_manifest.jsonl').write_text(''.join(batch._json(x)+'\n' for x in inputs),encoding='utf-8')
     (run/'style_predictions.jsonl').write_text(''.join(batch._json(x)+'\n' for x in predictions),encoding='utf-8')
     (v1/'manifest.jsonl').write_text(''.join(batch._json(x)+'\n' for x in manifest),encoding='utf-8')
+    # Real style-batch export writes index.csv alongside manifest.jsonl.
+    # Metadata archive intentionally rejects incomplete legacy releases.
+    with (v1 / 'index.csv').open('w', encoding='utf-8-sig', newline='') as out:
+        writer = csv.DictWriter(out, fieldnames=[
+            'source_id', 'category', 'file', 'source_file',
+            'source_sha256', 'status', 'ast_category', 'ast_score',
+            'review', 'reason',
+        ])
+        writer.writeheader()
+        for entry in manifest:
+            writer.writerow({
+                'source_id': entry['source_id'],
+                'category': entry['category_dir'],
+                'file': entry['output_path'],
+                'source_file': entry['relative_path'],
+                'source_sha256': entry['source_sha256'],
+                'status': entry['status'],
+                'ast_category': '', 'ast_score': '',
+                'review': 'UNVERIFIED', 'reason': '',
+            })
     (v1/'summary.json').write_text(json.dumps({
         'profile':profile,'run_id':run_id,'version':'v1','input_sha256':digest,
         'source_count':4,'tier':'UNVERIFIED_AST_CANDIDATE',
