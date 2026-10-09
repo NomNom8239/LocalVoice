@@ -201,7 +201,70 @@ python .\scripts\diarize.py `
   --output ".\data\diarization\archive_001"
 ```
 
-### Reference bank 作成
+### 新しい話者の初回準備：Reference Bank用素材はどう用意するか
+
+**初回だけは通常の収集コマンドを使用できません。** `scripts/localvoice.py --url` / `--wav` / `--vocals` は既存 `self_reference_bank.npz` で本人照合するため、Reference Bank未作成なら停止します。まず `yt-dlp` / ローカル録音から本人の声を手動選別し、その後にReference Bankを作ってください。
+
+**収録の基準：** `build_reference_bank.py` が受け付けるのは**2〜20秒のWAV**で、最低**3件**の有効な本人声が必要です。最低数だけでは話者判定が安定するとは限らないため、できれば**5〜15秒程度の明瞭な通常発話を10〜30件**、複数の発話場面から収集することを推奨します（推奨件数はコード上の必須条件ではありません）。他人声・重なり・BGM・効果音・読み上げ音声が強いものを除きます。**Reference Bankに誰の声を入れるかは最初だけ人間が確認する必要があります。**
+
+#### 方法A：アーカイブから本人だけが話す区間を切り出す
+
+`yt-dlp` を直接使えば、Reference Bankは不要です。以下は**初回話者登録の例**。URLと切り出し開始時刻は、元配信を聴いて本人が単独で発話している部分に**必ず置き換え**ます。抽出元は配信アーカイブ以外の手元の音声でも構いません。
+
+~~~powershell
+cd F:\AIProjects\LocalVoice
+$profile = "New_Speaker"
+$workDir = ".\work\reference_bootstrap\$profile\archive_001"
+$refs = ".\data\reference_bank\$profile\audio"
+New-Item -ItemType Directory -Force $workDir, $refs | Out-Null
+
+# 通常のlocalvoice.pyではなく、素材用の音声のみ取得
+yt-dlp --no-playlist -f "bestaudio/best" -o "$workDir\source.%(ext)s" "<配信アーカイブURL>"
+
+$source = Get-ChildItem $workDir -File |
+  Where-Object { $_.Name -like "source.*" -and $_.Extension -notin @(".part", ".ytdl") } |
+  Select-Object -First 1 -ExpandProperty FullName
+if (-not $source) { throw "元音声が見つかりません" }
+
+# 例示時刻。実際に本人しか話していない時間に変更して使用
+ffmpeg -n -ss 00:05:10 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_001.wav"
+ffmpeg -n -ss 00:18:20 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_002.wav"
+ffmpeg -n -ss 00:42:30 -i $source -t 8 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$refs\ref_003.wav"
+~~~
+
+`ffmpeg -n` は既存WAVの上書きを拒否します。完成したWAVは必ず再生し、本人だけと確認してからReference Bankへ使います。**最低3件は実行条件であり、3件だけでの精度保証はありません。** 追加の配信アーカイブは`archive_002`など別フォルダに取得してください。すでに元の音声がPCにある場合はダウンロードを省き、`ffmpeg`の`-i`へそのパスを指定できます。長尺音源全体をWAV化せず必要な短い区間だけ作れます。
+
+#### 方法B：複数人の配信から候補を探す
+
+単独発話区間が見つからない場合、独立した`diarize.py`を使うと、**Reference Bankなし**で話者別の候補区間を得られます。先に対象の時間帯だけWAVに切り出しておくと容量を抑えられます。
+
+~~~powershell
+ffmpeg -n -ss 00:10:00 -i $source -t 600 -vn -ac 1 -ar 16000 -c:a pcm_s16le "$workDir\candidate_10min.wav"
+.\.venv\Scripts\python.exe .\scripts\diarize.py --input "$workDir\candidate_10min.wav" --output "$workDir\diarization"
+~~~
+
+出力の`SPEAKER_00`・`SPEAKER_01`などは**機械が付けた仮ラベル**で、本人かどうかは未判定です。全フォルダを無条件にコピーせず、実際に聴いて本人だと分かった**2〜20秒のWAVだけ**を`data/reference_bank/<profile>/audio/`へ個別コピーします。BGMが強い場合は先にVocals分離する方法もありますが、分離で声が変質することがあります。
+
+#### 本人のWAVが揃ったらReference Bank生成
+
+~~~powershell
+$profile = "New_Speaker"
+$bank = ".\data\reference_bank\$profile\self_reference_bank.npz"
+if (Test-Path $bank) { throw "すでにReference Bankがあります。上書きせずバックアップと意図を確認してください" }
+
+.\.venv\Scripts\python.exe .\scripts\build_reference_bank.py --profile $profile --source ".\data\reference_bank\$profile\audio"
+Test-Path $bank
+~~~
+
+成功すると`self_reference_bank.npz`・`self_reference_bank.json`が作られます。結果の`Lowest similarity clips`（他サンプルから離れた候補）は、他人声・録音ノイズ混入がないか再確認します。既存bankで`build_reference_bank.py`を再実行するとファイルが**上書き**されるため、明示的な更新時以外は行いません。
+
+**閾値調整は任意の次工程**です。`calibrate_threshold.py --negative-source`には、**本人以外の人の声**を収録した2〜20秒のWAVを別フォルダに用意します。本人の参照音声をnegativeへ混ぜません。`thresholds.json`がなければ`config.toml`の初期閾値を使いますが、他人声を誤採用しない保証はありません。
+
+Reference Bankができた後に初めて、通常の`localvoice.py --url`による取得→話者判定→手動レビュー→`collect_training_audio.py --dry-run`→素材蓄積へ進めます。
+
+### Reference Bank作成（本人WAV準備後の実行コマンド）
+
+前節の音声準備が終わってから実行します。既存bankがある場合は上書きになるため、初期登録のために安易に再実行しないでください。
 
 ```powershell
 python .\scripts\build_reference_bank.py `
