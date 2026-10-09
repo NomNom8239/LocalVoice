@@ -154,6 +154,7 @@ def _publish(
                        parent=parent, source_library=source_library)
     manifest = _serialize(entries)
     index = _index(entries)
+    summary_blob = (json.dumps(summary, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     report = {
         "version": version, "profile": profile, "wav_referenced": len(entries),
         "wav_copies_created": 0, "categories": summary["categories"],
@@ -179,12 +180,13 @@ def _publish(
         "input_sha256": state["input_sha256"],
         "manifest_sha256": _sha_bytes(manifest),
         "index_sha256": _sha_bytes(index),
+        "summary_sha256": _sha_bytes(summary_blob),
         "review_csv_sha256": report["review_csv_sha256"],
         "review_json_sha256": report["review_json_sha256"],
     }
     _write_file(stage / "manifest.jsonl", manifest)
     _write_file(stage / "index.csv", index)
-    _write_file(stage / "summary.json", (json.dumps(summary, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+    _write_file(stage / "summary.json", summary_blob)
     _write_file(stage / "receipt.json", (json.dumps(receipt, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
     if review_csv is not None:
         _write_file(stage / "review" / "review_decisions.csv", review_csv)
@@ -269,6 +271,7 @@ def _verify(profile: str, version: str, *, check_audio: bool = True
     checks = {
         "manifest.jsonl": receipt.get("manifest_sha256"),
         "index.csv": receipt.get("index_sha256"),
+        "summary.json": receipt.get("summary_sha256"),
         "review/review_decisions.csv": receipt.get("review_csv_sha256"),
         "review/review_state.json": receipt.get("review_json_sha256"),
     }
@@ -316,7 +319,7 @@ def revise(profile: str, version: str, parent_version: str, review_csv: Path,
     """Create a new version from the full AST baseline and a cumulative review CSV."""
     if version == parent_version:
         raise ValueError("New version must differ from parent")
-    parent_receipt, _ = _verify(profile, parent_version)
+    parent_receipt, previous_entries = _verify(profile, parent_version)
     _, baseline = _verify(profile, "v1")
     run_id = parent_receipt["run_id"]
     state, originals, predictions = _load_run(run_id)
@@ -326,6 +329,18 @@ def revise(profile: str, version: str, parent_version: str, review_csv: Path,
     if any(baseline_lookup[sid]["category_dir"] != p["category_dir"] for sid, p in predictions.items()):
         raise ValueError("v1 metadata is not the original AST baseline")
     reviews, _ = review_export._read_csv(review_csv, baseline_lookup)
+    previously_reviewed = {
+        e["source_id"] for e in previous_entries
+        if e.get("review_decision") or e.get("manual_category") or
+        e.get("review_memo") or e.get("review_identity", "unverified") != "unverified" or
+        e.get("review_quality", "unverified") != "unverified"
+    }
+    missing = previously_reviewed - reviews.keys()
+    if missing:
+        raise ValueError(
+            f"Review CSV is not cumulative: {len(missing)} earlier reviewer rows missing "
+            f"(e.g. {sorted(missing)[0]}). Reload the previous HTML JSON before exporting"
+        )
     raw_csv = _bytes_optional(review_csv)
     raw_json = _bytes_optional(review_json, json_format=True)
     entries = []
