@@ -1,7 +1,7 @@
 # LocalVoice directory ownership and change rules
 
-Status: adopted as directory-ownership rules; delivery priorities updated 2026-10-09 on `feature/phase3-asr-pilot`.
-Scope: directory and non-destructive write contracts. The current MVP is a human-browsable, **Japanese-category reference WAV library v1 from the existing 1,167 `Ui_Shigure` candidate WAVs**. ASR is optional metadata and does not gate acoustic classification, review, or export. This document does not claim unimplemented features already exist.
+Status: adopted directory-ownership rules; current implementation status reconciled 2026-10-09 on `feature/phase4-acoustic-pilot`.
+Scope: directory and non-destructive write contracts. **Ui_Shigure best-effort AST classification and targeted human review are complete as unverified candidate v2**, with metadata-only v1/v2 history verified. Formal QC / approved `outputs/datasets/` remains separate and pending. ASR is optional metadata and does not gate acoustic classification or review.
 
 ## Ownership boundaries
 
@@ -9,7 +9,7 @@ Scope: directory and non-destructive write contracts. The current MVP is a human
 | --- | --- | --- | --- |
 | `data/` | Existing acquired audio, review decisions, reference banks and legacy outputs | Ignored; preserve in place | **No writes by newly developed ASR/style/dataset stages.** Existing legacy scripts have established writes here; do not alter their contracts without a separate, tested migration. Never bulk-clean this directory. |
 | `scripts/` | Existing archive retrieval, separation, diarization, identity verification, review, and RVC dataset commands | Tracked | Maintain the existing entry points. Do not add new ASR/style experiment scripts here. |
-| `src/localvoice/` | First-party application code (ASR Pilot implemented; style assessment, QC/review and library export pending) | Tracked | Place new acoustic classification, QC/review and export code here under one CLI; do not modify legacy acquisition scripts solely for these stages. |
+| `src/localvoice/` | First-party application code (ASR Pilot, AST full batch, review CSV application, metadata-only history CLI implemented; comprehensive QC and approved dataset promotion pending) | Tracked | Place new acoustic classification, QC/review and export code here under one CLI; do not modify legacy acquisition scripts solely for these stages. |
 | `tests/` | Tests for first-party code | Tracked | Tests reflect public behavior and IO boundaries; fixtures cannot silently depend on private `data/`. |
 | `docs/` | Stable layout, design decisions and operating instructions | Tracked | Keep stable rules in this document; put significant architecture decisions in `docs/decisions/` when they occur. |
 | `Irodori-TTS/` | **Upstream** Irodori-TTS standalone Git clone and runtime | Ignored by LocalVoice | Do not add LocalVoice code, patches, tools, LoRA experiments, or custom datasets inside. Normal upstream-managed `.venv/`, `gradio_outputs_voicedesign/`, and caches may appear. |
@@ -42,18 +42,18 @@ LocalVoice/
 │   ├── collect_training_audio.py
 │   ├── build_rvc_dataset.py
 │   └── common.py
-├── src/localvoice/                 # future: new application modules
+├── src/localvoice/                 # first-party ASR and AST/classification/review code
 │   ├── __main__.py                 # ONE CLI (python -m localvoice ...)
 │   ├── transcription/             # existing asr-pilot; full ASR deferred
-│   ├── style/                     # AST/CLAP 12-clip pilot + AST full batch candidate/export implementation
+│   ├── style/                     # AST pilot/full batch, CSV apply-review, metadata versioning
 │   ├── quality/                   # proposed owner for identity/QC/review; create if needed
 │   └── dataset/                   # planned versioned Japanese-category export
-├── tests/                          # future: tests organized by feature
+├── tests/                          # tests organized by feature
 ├── docs/
 │   └── PROJECT_LAYOUT.md          # this document
 ├── data/                           # existing data; DO NOT MIGRATE/DELETE
 ├── work/<run-id>/                  # per-run inputs, predictions, QC, review, manifests, logs
-├── outputs/datasets/<profile>/<version>/   # future: human-browsable, approved Emoji Palette-aligned audio library
+├── outputs/metadata/<profile>/     # versions/vN metadata; inbox for review CSV/JSON
 ├── outputs/tts/                    # future: retained copies of WebUI audio
 ├── cache/                          # optional: explicitly configured cache
 ├── .venv/                          # existing LocalVoice runtime
@@ -64,7 +64,7 @@ LocalVoice/
     └── gradio_outputs_voicedesign/ # upstream runtime output, if generated
 ```
 
-Do not create placeholder directories or files merely to match the diagram. On the active ASR Pilot branch, `src/localvoice/`, `work/` (local), `tests/` and `pyproject.toml` already have concrete roles; `quality/`, full style classification, `dataset/` and final `outputs/datasets/` are **proposed future capabilities**. The current `style/pilot.py` is an exploratory model-comparison entry point and does not approve or export any audio.
+Do not create placeholder directories or files merely to match the diagram. On the active `feature/phase4-acoustic-pilot` branch, `src/localvoice/style/batch.py`, `review_export.py`, `catalog.py`, `localvoice_ast_candidate_reviewer.html`, `work/` (local), `tests/`, and `outputs/metadata/` (local) have concrete roles. `quality/`, approved `dataset/` promotion and final `outputs/datasets/` remain future capabilities. AST candidate output and the reviewer do **not** approve training audio.
 
 ## Existing acquisition compatibility: exception, not the new pattern
 
@@ -98,9 +98,18 @@ v1/v2 materializations automatically; verify old/new counts, hashes, ability
 to restore, and backups before any manual retirement. An approved
 `outputs/datasets` library remains a separate workflow.
 
+## Current v2 checkpoint (2026-10-09)
+
+- `Ui_Shigure` AST batch `ast_batch_20261009_163035451`: 1,167/1,167 WAV, unknown 5, errors 0. v1 unverified candidate output complete; targeted reviewer CSV 105 entries produced v2 candidate with reviewed usable 100, caution 5, unreviewed 1,062.
+- `outputs/metadata/<profile>/versions/v1,v2,...` is the **immutable classification and review history**. Existing v1/v2 metadata verified against original WAVs on Windows (1,167 referenced each, no WAV copying). Browser CSV/JSON drop area is `outputs/metadata/<profile>/inbox/`.
+- A **single tracked HTML** `localvoice_ast_candidate_reviewer.html` handles first human review of classified v1 and subsequent reviews of v2/v3/etc. It accepts either candidate WAV folders or metadata version + original WAV folder, and exports cumulative review CSV/JSON. Mock JS integration passed; **Windows browser acceptance is still pending**.
+- For later revisions, use `style-batch metadata revise` instead of copying all 1,167 WAVs. `style-batch apply-review` remains an older copy-producing workflow.
+- Source WAVs, completed AST run evidence and metadata must be retained/backed up; a metadata JSON alone does not contain WAV bytes. Old candidate audio folders are not automatically deleted. No actual copy-based restoration test was run.
+- Notion handoff: LV-R04 / R05 / R08 Done, LV-R09 Chrome acceptance Ready; LV-R06 formal QC/backlog, LV-R03 ASR comparison backlog, LV-R07 ingestion E2E backlog.
+
 ## Implementation checkpoint — AST full-batch code added (2026-10-09)
 
-`src/localvoice/style/batch.py` and the existing single CLI now own read-only AST batch inventory, incremental predictions, checkpoint/resume, and staged `outputs/candidates/<profile>/<version>/` browse export. Offline mock regressions are in `tests/test_style_batch.py`; [Windows runbook](AST_BATCH_RUNBOOK.md) is available. **Do not claim GPU full-batch acceptance before the user runs and verifies all 1,167 WAVs.** The separate reviewed `outputs/datasets/` library, identity/QC review integration and new-stream E2E are still pending.
+`src/localvoice/style/batch.py` and the existing single CLI now own read-only AST batch inventory, incremental predictions, checkpoint/resume, and staged `outputs/candidates/<profile>/<version>/` browse export. Offline mock regressions are in `tests/test_style_batch.py`; [Windows runbook](AST_BATCH_RUNBOOK.md) is available. **Windows実機のAST全1,167件処理は完了（unknown=5、errors=0）し、v1候補・v2レビュー反映版も作成済み。** ただし別途承認済み`outputs/datasets/`、全件独立identity/QCと新規取り込みE2Eは未完了。
 
 ## Execution priority clarification: AST best-effort browse first (2026-10-09)
 
@@ -113,7 +122,10 @@ AST is the sole required model for the first batch. The **first useful output** 
 
 This supersedes any below wording that implies the **initial candidate-browse library** must wait for full reviewer approval. See [two-tier output contract](EMOJI_AUDIO_DATASET.md).
 
-## Current MVP, phase gates and dependencies (2026-10-09)
+## Historical MVP plan (superseded by the v2 checkpoint above)
+
+**Historical planning notes below:** Earlier v1 acceptance described full QC plus approved `outputs/datasets/` as the initial gate. That is **not** what R04/R05/R08 marked Done: those tasks delivered the best-effort AST candidate v1 and reviewed candidate v2. Comprehensive QC and approved-dataset promotion remain LV-R06 Backlog; Chrome reviewer acceptance is LV-R09 Ready. The original rationale is retained for traceability.
+
 
 **MVP / current priority:** Generate a versioned, human-browsable reference WAV library from the existing **1,167** `data/training_audio/Ui_Shigure/audio/` candidate WAVs. This includes candidate classification/QC coverage for all inputs, but **does not require that every recording be automatically approved**. Unknown/foreign speaker/QC failures stay outside the promoted library. Only reviewed and approved clean references are copied. Users manually choose a file in Explorer and attach it to upstream Irodori-TTS VoiceDesign; fully automated synthesis is not an MVP requirement.
 
