@@ -89,9 +89,11 @@ second acquisition CLI or copy LocalVoice code into upstream `Irodori-TTS/`.
   workflow. `--force` retains its **legacy destructive run-dir behavior**
   and must not be used to recover an interrupted bootstrap casually.
   The safe `--resume-bootstrap <old-run-name>` path reuses the preview WAVs
-  in an interrupted run without re-downloading or re-separating audio; the
-  renewed classification runs diarization once because the previous turns
-  were not serialized.
+  in an interrupted run without re-downloading or re-separating audio;
+  **its default behavior is Bank-only and stops before any full-archive
+  diarization or classification**. An explicit `--classify-after-bootstrap`
+  opt-in runs expensive diarization once because interrupted legacy runs
+  did not serialize the original speaker turns.
 - Preliminary automated quality gates do not replace speaker identity
   confirmation, final recording quality QC, or human dataset approval.
 - **Runtime acceptance pending:** tests added, but the actual user Windows
