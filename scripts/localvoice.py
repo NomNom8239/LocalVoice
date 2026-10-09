@@ -371,7 +371,10 @@ def choose_bootstrap_speakers(
                     print(" ", wav)
             else:
                 for wav in previews[label]:
-                    run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(wav)])
+                    try:
+                        run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(wav)])
+                    except subprocess.CalledProcessError:
+                        print(f"ffplay stopped for {wav}; choose another preview or speaker.")
             continue
         selected = list(dict.fromkeys(v.strip() for v in raw.split(",") if v.strip()))
         if not selected or any(label not in labels for label in selected):
@@ -701,7 +704,14 @@ def main() -> None:
         if not vocals.exists():
             raise FileNotFoundError(vocals)
 
-    reference_file = reference_dir(config, args.profile) / "self_reference_bank.npz"
+    reference_root = reference_dir(config, args.profile)
+    reference_file = reference_root / "self_reference_bank.npz"
+    reference_report = reference_root / "self_reference_bank.json"
+    if reference_file.exists() != reference_report.exists():
+        raise RuntimeError(
+            f"Incomplete Reference Bank at {reference_root}: "
+            "NPZ/JSON must both exist. Inspect rather than overwriting."
+        )
     bootstrap_turns = None
     if not reference_file.is_file():
         print("Reference Bank missing: starting first-speaker bootstrap.")
