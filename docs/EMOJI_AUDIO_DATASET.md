@@ -12,6 +12,10 @@ The processing workflow is: **input WAV inventory → acoustic style candidate a
 
 Category names are aligned to the [official Irodori Emoji Palette implementation](https://github.com/Aratako/Irodori-TTS/blob/main/irodori_tts/gradio_emoji_palette.py), but **Emoji Palette entries are synthesis-time controls, not an audio classifier or ground-truth recording labels**. Track palette revision when freezing the taxonomy. Actual reference conditioning also depends on recording quality; a category alone does not guarantee the corresponding style will be synthesized.
 
+## Current implementation checkpoint
+
+AST's read-only batch classifier and separate **UNVERIFIED** candidate folder export are implemented under `src/localvoice/style/batch.py` with CLI `style-batch inventory|run|summary|export`. This implementation does not imply that the real 1,167 files have been processed: **real Windows/GPU batch and manual folder-browsing acceptance are still pending**. Use the [AST batch Windows runbook](AST_BATCH_RUNBOOK.md). The reviewed `outputs/datasets/` export and LV-R06 identity/recording QC remain separate unfinished work.
+
 ## Pragmatic two-tier delivery (2026-10-09 decision)
 
 **Do not block the user's first useful library on perfect discrimination among whisper, sigh, pant and moan.** The near-term priority is to process the existing 1,167 WAVs with **AST alone** and create a human-browsable, **explicitly unverified candidate category library**. CLAP, 48-sample ASR accuracy evaluation, class-by-class human reference annotation, fine-grained segmentation, and calibrated confidence/recall benchmarks are **not prerequisites** to this first batch/browse deliverable.
