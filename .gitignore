@@ -64,3 +64,8 @@ runs/
 
 # Isolated ASR environment; rebuilt when the new ASR pipeline is designed
 /.venv-asr/
+
+# Future first-party pipeline scratch/results (never commit audio or generated datasets)
+/work/
+/outputs/
+/cache/
