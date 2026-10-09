@@ -196,7 +196,7 @@ function parseJsonl(text){const seen=new Set(),rows=[];text.split(/\r?\n/).forEa
  if(!['UNVERIFIED_AST_CANDIDATE','UNVERIFIED_REVIEWED_CANDIDATE'].includes(x.library_tier)||x.human_approved!==false||!ALLOWED_CATEGORIES.has(astCategory(x)))throw Error('非対応の候補種別: '+(n+1));
  seen.add(x.source_id);rows.push(x);});return rows;}
 function readSummary(x,metadata){if(!x||typeof x.profile!=='string'||typeof x.version!=='string'||typeof x.run_id!=='string'||!/^[a-f0-9]{64}$/i.test(x.input_sha256||'')||!Number.isSafeInteger(x.source_count)||x.source_count<1)throw Error('summaryの識別子が不正');
- if(!((metadata&&x.tier==='METADATA_ONLY_UNVERIFIED_CANDIDATE')||(!metadata&&['UNVERIFIED_AST_CANDIDATE','UNVERIFIED_REVIEWED_CANDIDATE'].includes(x.tier))))throw Error('未対応のsummary種別');
+ if(!((metadata&&x.tier==='METADATA_ONLY_UNVERIFIED_CANDIDATE')||(!metadata&&['UNVERIFIED_AST_CANDIDATE','UNVERIFIED_REVIEWED_CANDIDATE','UNVERIFIED_MATERIALIZED_CANDIDATE'].includes(x.tier))))throw Error('未対応のsummary種別');
  return x;}
 function previousReview(x){const r={decision:x.review_decision||'',manual_category:x.manual_category||'',identity:x.review_identity||'unverified',quality:x.review_quality||'unverified',reject_reason:x.review_reason||'',memo:x.review_memo||'',updated_at:x.review_updated_at||''};
  return r.decision||r.manual_category||r.identity!=='unverified'||r.quality!=='unverified'||r.reject_reason||r.memo?r:null;}
