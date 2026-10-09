@@ -290,3 +290,26 @@ def test_metadata_versions_check_integrity_and_resume_materialization(prepared, 
         catalog.materialize("Ui_Shigure", "v1", "restored")
     assert catalog.materialize("Ui_Shigure", "v1", "restored", resume=True)["wav_count"] == 4
     assert len(list((v1.parent / "restored" / "audio").rglob("*.wav"))) == 4
+
+
+def test_metadata_revise_blocks_accidental_loss_of_old_decisions(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    review_export.apply_review(run_id, csv_file)
+    catalog.archive(run_id, "v1")
+    catalog.archive(run_id, "v2", review_csv=csv_file)
+    write([rows[0]])  # lost the two other previously reviewed records
+    with pytest.raises(ValueError, match="not cumulative"):
+        catalog.revise("Ui_Shigure", "v3", "v2", csv_file)
+    assert not (
+        root / "outputs" / "metadata" / "Ui_Shigure" / "versions" / "v3"
+    ).exists()
+
+
+def test_metadata_summary_checksum_catches_tampering(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    catalog.archive(run_id, "v1")
+    summary = root / "outputs" / "metadata" / "Ui_Shigure" / "versions" / "v1" / "summary.json"
+    original = summary.read_bytes()
+    summary.write_bytes(original.replace(b'"wav_referenced"', b'"corrupt"') + b" ")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        catalog.verify("Ui_Shigure", "v1")
