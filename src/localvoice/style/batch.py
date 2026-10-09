@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import sys
+import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,21 +59,35 @@ def _write_new(path: Path, value: str) -> None:
 
 
 def _atomic_json(path: Path, value: dict[str, Any]) -> None:
+    """Checkpoint without truncating the last good manifest.
+
+    On Windows a short-lived reader/AV scan can prevent replacement of an
+    existing file (WinError 5/32). Retry a bounded number of times. Never
+    replace this atomic operation with direct writes to the live manifest.
+    """
     temporary = path.with_name(path.name + ".writing")
     if temporary.is_symlink():
         raise ValueError(f"Linked pending state file: {temporary}")
-    # A crash can leave our own .writing file. Resume may safely discard it,
-    # but never touch sources or another run.
+    # A crash may have left our own uncommitted temporary checkpoint.
+    # The current run manifest stays authoritative until os.replace succeeds.
     if temporary.exists():
         if not temporary.is_file():
             raise ValueError(f"Unexpected pending state path: {temporary}")
         temporary.unlink()
-    try:
-        _write_new(temporary, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
-        os.replace(temporary, path)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+    _write_new(temporary, json.dumps(value, ensure_ascii=False, indent=2) + "\n")
+    for attempt in range(8):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError as exc:
+            if attempt == 7:
+                # Preserve .writing for diagnosis/retry. The previous manifest
+                # and durable style_predictions.jsonl are still intact.
+                raise PermissionError(
+                    f"Checkpoint replace blocked after 8 attempts: {temporary} -> {path}; "
+                    "stop other readers/sync/AV processes and resume the same run"
+                ) from exc
+            time.sleep(min(0.05 * (2 ** attempt), 0.75))
 
 
 def _stage_text(path: Path, value: str, *, resume: bool, encoding: str = "utf-8") -> None:
@@ -303,8 +318,11 @@ def run(profile: str, run_id: str, expected_count: int | None, device: str,
         recorded[row["source_id"]] = result
         state.update({"processed": len(recorded), "remaining": len(rows) - len(recorded),
                       "updated_at": _now(), "status": "running"})
-        _atomic_json(target / "run_manifest.json", state)
+        # Each JSONL row is already a closed, durable resume marker. Replacing
+        # the Windows state file for every WAV increases lock contention; the
+        # summary/resume paths reconcile counts from the JSONL evidence.
         if len(recorded) % 25 == 0 or len(recorded) == len(rows):
+            _atomic_json(target / "run_manifest.json", state)
             print(f"AST BATCH: {len(recorded)}/{len(rows)} "
                   f"unknown={sum(r['status'] == 'unknown' for r in recorded.values())} "
                   f"errors={sum(r['status'] == 'error' for r in recorded.values())}",
