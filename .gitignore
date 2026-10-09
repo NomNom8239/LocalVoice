@@ -57,3 +57,10 @@ runs/
 *.log
 *.tmp
 *.part
+
+# Locally installed Irodori WebUI and cleanup area (not repository code)
+/Irodori-TTS/
+/archive/
+
+# Isolated ASR environment; rebuilt when the new ASR pipeline is designed
+/.venv-asr/
