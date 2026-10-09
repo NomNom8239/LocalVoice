@@ -51,7 +51,7 @@ LocalVoice/
 │   └── PROJECT_LAYOUT.md          # this document
 ├── data/                           # existing data; DO NOT MIGRATE/DELETE
 ├── work/<run-id>/                  # future: intermediates, manifests, logs
-├── outputs/datasets/<profile>/<version>/   # future: approved dataset exports
+├── outputs/datasets/<profile>/<version>/   # future: human-browsable, approved Emoji Palette-aligned audio library
 ├── outputs/tts/                    # future: retained copies of WebUI audio
 ├── cache/                          # optional: explicitly configured cache
 ├── .venv/                          # existing LocalVoice runtime
@@ -77,7 +77,7 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 1. Start with one user-facing command interface (`python -m localvoice ...`) and one reusable, import-safe code path per capability. Build its editable-package configuration when Phase 3 is implemented. Never create `*_v2.py`, `*_final.py`, `experiment_*.py`, and similar parallel implementations in the source tree.
 2. Transcription consumes approved audio **by absolute/validated input path** from `data/` (or another explicitly chosen source); it writes only to a fresh `work/<run-id>/`. It does **not** train models or auto-update speaker reference banks.
 3. Style assessment is separate from speech recognition. Missing, nonverbal, ambiguous or unsupported evidence remains explicitly `unknown`/`requires_review`; ASR text is not proof of a vocal style.
-4. Each run records a manifest with run ID, source identity/path and fingerprint, selected models/config versions, stage statuses, and output paths. Save evidence and failures, not just success files. A final reviewed dataset export is a separate, explicit promotion to a new version under `outputs/datasets/`.
+4. Each run records a manifest with run ID, source identity/path and fingerprint, selected models/config versions, stage statuses, and output paths. Save evidence and failures, not just success files. A final reviewed dataset export is a separate, explicit promotion to a new version under `outputs/datasets/`. **The promoted folders must be usable by people without opening metadata files:** see [Emoji Palette-aligned audio library specification](EMOJI_AUDIO_DATASET.md).
 5. No implicit recursive cleanup, auto-approval, destructive overwrite, or silent modification of existing audio/reference banks. New operations fail closed on destination conflicts. Data operations and tests must not depend on the user's private recordings being present.
 6. Never modify upstream Irodori-TTS files to compensate for a LocalVoice issue. Keep launch/integration glue in LocalVoice, and use the upstream UI as shipped. The official UI may generate `Irodori-TTS/gradio_outputs_voicedesign/`; copy any audio worth retaining into `outputs/tts/` before a future reinstall.
 7. A proposed new module, CLI entry point, environment, or output directory needs a documented purpose and an owner in this table. If an existing location owns the responsibility, extend that implementation rather than adding another file.
@@ -87,8 +87,8 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 
 - **Phase 1:** baseline code retains archive acquisition and speaker/dataset processing; old independent LoRA files are excluded.
 - **Phase 2:** official Irodori-TTS installed independently, GPU works, and reference-audio VoiceDesign generation succeeds.
-- **Phase 3:** approve transcription IO schema and model choices first; implement **only** `src/localvoice/transcription/`, a single CLI integration, and matching tests. Existing `data/` is read-only to this stage.
-- **Phase 4:** approve style-label taxonomy separately; implement `src/localvoice/style/` and corresponding tests.
-- **Phase 5:** implement explicit, versioned dataset assembly/export and verify real end-to-end provenance, error handling, and non-modification of existing inputs.
+- **Phase 3:** approve transcription IO schema and model choices first; implement **only** `src/localvoice/transcription/`, a single CLI integration, and matching tests. Distinguish speech/non-speech/uncertain events for later classification; **do not** classify Emoji Palette styles at this stage. Existing `data/` is read-only to this stage.
+- **Phase 4:** approve style-label taxonomy (including distinguishable Emoji Palette-aligned categories and human review) separately; implement `src/localvoice/style/` and corresponding tests.
+- **Phase 5:** export reviewed clips into versioned **human-browsable Japanese category folders** under `outputs/datasets/<profile>/<version>/audio/` (normal conversation, whisper, laughter, moans, breathlessness, etc.) with CSV/JSONL index. Verify real end-to-end provenance, error handling, ease of manual use and non-modification of existing inputs.
 
 If requirements change, change this layout/decision first; do not place additional scripts in whichever directory is convenient.
