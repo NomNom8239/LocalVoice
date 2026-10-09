@@ -1,7 +1,6 @@
 # LocalVoice — WAVを共通化した分類・レビュー履歴管理
 
-Status: implemented, with Windows browser acceptance pending. This document defines the metadata-first successor to
-the copy-per-version `outputs/candidates/<profile>/v1,v2` releases.
+Status (2026-10-09): implementation present; `Ui_Shigure` v1/v2 metadata archive and source-WAV verification **passed on Windows** (1,167 each; no WAV copied). The common browser reviewer passed simulated JavaScript scenarios; real Chrome/Edge acceptance is **pending**. This document describes metadata-first operation instead of repeatedly copying `outputs/candidates/<profile>/v1,v2` WAVs.
 
 ## Purpose and ownership
 
@@ -37,7 +36,8 @@ outputs/metadata/Ui_Shigure/
 Version names are immutable. Each revision stores the *full resolved view* of every
 source, plus the exact input CSV/JSON files (where provided). No implicit merge of
 partial CSV exports. HTML review CSVs must be **cumulative**: when adding decisions,
-load the previous JSON in the reviewer first, then export a full new CSV.
+load the latest candidate manifest or metadata history (which auto-restores past reviews),
+or import a compatible cumulative review CSV/JSON, then export a full new CSV.
 
 `outputs/candidates/<profile>/<name>/` is a materialized *view/cache*, not the
 canonical version history. Previous `v1` and `v2` WAV copies are NEVER automatically
@@ -66,29 +66,35 @@ Unreviewed clips retain the AST category and are **not automatically approved**.
 ## Manual reclassification in the existing browser reviewer
 
 The tracked repository-root `localvoice_ast_candidate_reviewer.html` opens locally
-in Chrome/Edge. It is the same reviewer used for v1, now extended for v2 and
-later metadata versions. No new HTML copy or WAV copy is required.
+in Chrome/Edge. It is **profile-agnostic** (identity comes from `summary.json`),
+supports **initial human review of AST-classified v1** and revisions from v2, v3,
+etc. A raw, unclassified WAV folder alone is not enough: AST `run`/`export` must
+first produce the v1 candidate and/or archived history. No additional HTML or WAV
+copy is required for review.
 
-**Method A (when the v2 WAV candidate folder still exists):**
+**Method A (when a versioned WAV candidate folder still exists):**
 
 1. Open `localvoice_ast_candidate_reviewer.html`.
-2. Select `outputs/candidates/Ui_Shigure/v2` with the first folder picker
-   (select v2 itself, **not** its `audio` child).
-3. The reviewer reconstructs existing manual decisions from v2's
-   `manifest.jsonl`, preserving reviewed records on subsequent export.
+2. Select `outputs/candidates/<profile>/<version>` with the first folder picker,
+   e.g. `outputs/candidates/Ui_Shigure/v2` (select the version directory,
+   **not** the `audio` child).
+3. For v1 initial review, the AST baseline loads with no manual decisions.
+   For reviewed v2+ it reconstructs prior decisions from the version's
+   `manifest.jsonl` and preserves them on subsequent export.
 
-**Method B (when the materialized v2 WAV folder was removed):**
+**Method B (no materialized WAV version is needed):**
 
-1. Select `outputs/metadata/Ui_Shigure/versions/v2` using the metadata picker.
-2. Select `data/training_audio/Ui_Shigure/audio` using the original-WAV picker.
-3. Browse/reclassify directly against the original WAVs by `relative_path`;
+1. Select `outputs/metadata/<profile>/versions/<version>` using the metadata picker,
+   e.g. `outputs/metadata/Ui_Shigure/versions/v2`.
+2. Select the **same profile** `data/training_audio/<profile>/audio` using the original-WAV picker.
+3. Browse/reclassify against the original WAVs by `relative_path`;
    do not run `materialize` solely to use the reviewer.
 
 For either method, a prior review CSV/JSON can also be imported with the
 **CSV/JSON picker**. Existing decisions are never silently dropped: all
 previously reviewed source IDs must appear in the imported cumulative file.
 The reviewer checks each recorded `source_id`, `source_sha256`, and
-**original** `ast_category` from v2 (not v2's category folder name). A review
+**original** `ast_category` from the AST baseline (not the current category folder name). A review
 that contains an unknown/mismatched source is rejected without partial import.
 
 After reviewing, download **both** JSON (future resume) and cumulative CSV
@@ -136,6 +142,10 @@ Browser verification on the user's actual folder selection is still pending.
 
 All commands below use the repository-local `.venv` and the existing completed
 AST run. They **never** remove the old materialized `v1/` and `v2/`.
+**For `Ui_Shigure`, the v1 and v2 archives are already created and `metadata verify`
+passed. Do not rerun `archive` for those immutable version names:** it will refuse
+to overwrite them. The archive steps remain here for migration/reproducibility and
+new profiles, not as instructions to create another copy.
 
 ```powershell
 cd F:\AIProjects\LocalVoice
@@ -204,8 +214,9 @@ $newCsv = ".\outputs\metadata\Ui_Shigure\inbox\localvoice_ast_review_decisions_v
 
 If an accompanying HTML JSON exists, add `--review-json <path>` to the
 `archive` or `revise` commands. Each version records exact raw CSV/JSON bytes
-and their SHA-256. The v3 command **does not copy audio**. If you want to
-browse old or new categories in Explorer, regenerate a separate folder:
+and their SHA-256. The v3 command **does not copy audio**. The common HTML can directly play original
+WAVs with metadata (Method B); an Explorer folder should be materialized **only
+if explicitly needed**, as this creates a complete additional audio copy. Example:
 
 ```powershell
 .\.venv\Scripts\python.exe -m localvoice style-batch metadata materialize `
