@@ -159,6 +159,7 @@ def test_main_existing_bank_skips_bootstrap(tmp_path, monkeypatch):
     reference = tmp_path / "ref"
     reference.mkdir()
     (reference / "self_reference_bank.npz").write_bytes(b"EXISTING")
+    (reference / "self_reference_bank.json").write_text("{}")
     monkeypatch.setattr(module, "load_config", lambda *_: {})
     monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
     monkeypatch.setattr(module, "run_dir", lambda *args: root)
@@ -187,3 +188,21 @@ def test_preview_requires_confirmed_person_and_never_guesses_label(monkeypatch, 
             {"SPEAKER_00": [(0, 5, "SPEAKER_00")] * 3},
             {"SPEAKER_00": [tmp_path / "a.wav"]},
         )
+
+
+def test_main_incomplete_bank_refuses_classification(tmp_path, monkeypatch):
+    vocals = tmp_path / "sample.wav"
+    vocals.touch()
+    ref = tmp_path / "reference"
+    ref.mkdir()
+    (ref / "self_reference_bank.npz").write_bytes(b"PARTIAL")
+    monkeypatch.setattr(module, "load_config", lambda *_: {})
+    monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
+    monkeypatch.setattr(module, "run_dir", lambda *args: tmp_path / "runs")
+    monkeypatch.setattr(module, "reference_dir", lambda *args: ref)
+    monkeypatch.setattr(module, "project_path", lambda path: Path(path))
+    monkeypatch.setattr(module, "classify", lambda *args, **kwargs: pytest.fail("must fail before scoring"))
+    monkeypatch.setattr(sys, "argv", ["localvoice.py", "--profile", "Partial", "--vocals", str(vocals)])
+    with pytest.raises(RuntimeError, match="Incomplete Reference Bank"):
+        module.main()
+    assert (ref / "self_reference_bank.npz").read_bytes() == b"PARTIAL"
