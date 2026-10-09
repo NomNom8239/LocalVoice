@@ -150,38 +150,71 @@ function decision(type){const item=selectedFile();if(!item)return;if(type==='rej
  const edits={decision:type};if(type!=='reject')edits.reject_reason='';store(edits,true);tell(type==='keep'?'候補として採用を記録しました（本人性と品質は別に判断）。':type==='hold'?'保留として記録しました。':'除外として記録しました。元WAVは変更していません。');}
 function safeExportCsv(value){let t=String(value??'');if(/^[\s]*[=+\-@]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"';}
 function dl(text,name,mime){const data=new Blob([text],{type:mime});const url=URL.createObjectURL(data);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);}
-function getExportRecords(){return [...state.review.entries()].map(([id,r])=>{const item=state.byId.get(id);return {source_id:id,source_sha256:item.source_sha256,ast_category:item.category_dir,...r};}).sort((a,b)=>a.source_id.localeCompare(b.source_id));}
-function exportJson(){if(!state.info){tell('先にv1フォルダを選んでください。',true);return;}const data={schema:'localvoice.ast-candidate-review.v1',created_at:changedAt(),library:{profile:state.info.profile,version:state.info.version,run_id:state.info.run_id,input_sha256:state.info.input_sha256,model_id:state.info.model_id,source_count:state.records.length},records:getExportRecords()};
- dl(JSON.stringify(data,null,2),'localvoice_ast_candidate_review_'+state.info.version+'.json','application/json');state.dirty=false;tell('レビューJSONを保存しました。次回はv1フォルダとこのJSONを選べば復元できます。');}
-function exportCsv(){if(!state.info){tell('先にv1フォルダを選んでください。',true);return;}const columns=['source_id','source_sha256','ast_category','manual_category','decision','identity','quality','reject_reason','memo','updated_at'];const rows=getExportRecords().filter(r=>r.decision||r.manual_category||r.memo||r.identity!=='unverified'||r.quality!=='unverified');
- const csv='\ufeff'+[columns,...rows.map(r=>columns.map(k=>r[k]??''))].map(row=>row.map(safeExportCsv).join(',')).join('\r\n')+'\r\n';dl(csv,'localvoice_ast_review_decisions_'+state.info.version+'.csv','text/csv;charset=utf-8');tell(`${rows.length}件のレビュー記録をCSVに出力しました（WAVは未変更）。`);}
-function assertRecord(v){if(typeof v!=='object'||v===null)throw Error('不正なレビュー行です');const id=v.source_id;if(typeof id!=='string'||!state.byId.has(id))throw Error(`不明なsource_id: ${id}`);const item=state.byId.get(id);
- if(v.source_sha256!==item.source_sha256||v.ast_category!==item.category_dir)throw Error(`WAVのSHAまたはAST分類が一致しません: ${id}`);
- if(v.decision&&!DECISIONS.has(v.decision))throw Error(`不明な判定: ${id}`);
- if(v.manual_category&&!ALLOWED_CATEGORIES.has(v.manual_category))throw Error(`不明な手動分類: ${id}`);
- if(!IDENTITIES.has(v.identity)||!QUALITIES.has(v.quality)||!REASONS.has(v.reject_reason))throw Error(`不明な本人性・品質・除外理由: ${id}`);
- if(v.decision==='reject'&&!v.reject_reason)throw Error(`除外理由がありません: ${id}`);
- if(typeof v.memo!=='string'||v.memo.length>2000)throw Error(`不正なメモ: ${id}`);
- return {source_id:id,decision:v.decision||'',manual_category:v.manual_category||'',identity:v.identity,quality:v.quality,reject_reason:v.reject_reason,memo:v.memo,updated_at:typeof v.updated_at==='string'?v.updated_at.slice(0,100):''};
-}
-async function importReview(file){if(!state.info)throw Error('先にv1フォルダを読み込んでください。');const data=JSON.parse(await file.text());if(data.schema!=='localvoice.ast-candidate-review.v1'||!Array.isArray(data.records)||!data.library)throw Error('対応外のレビューJSON形式です');
- for(const key of ['profile','version','run_id','input_sha256','model_id','source_count']){const v=key==='source_count'?state.records.length:state.info[key];if(data.library[key]!==v)throw Error(`ライブラリの${key}が現在のv1と一致しません。`);}
- const next=new Map();for(const v of data.records){const r=assertRecord(v);if(next.has(r.source_id))throw Error(`重複した記録: ${r.source_id}`);next.set(r.source_id,r);}state.review=next;state.dirty=false;filterList();tell(`${next.size}件の保存済みレビューを復元しました。`);}
-function pathFromEntry(file){const p=(file.webkitRelativePath||'').replaceAll('\\','/');if(!p)return '';const parts=p.split('/');return parts.slice(1).join('/');}
-function parseJsonl(src){const seen=new Set(),list=[];src.split(/\r?\n/).forEach((line,n)=>{if(!line.trim())return;let obj;try{obj=JSON.parse(line)}catch(e){throw Error(`manifest.jsonlの${n+1}行がJSONではありません。`)}
- if(typeof obj.source_id!=='string'||seen.has(obj.source_id)||!safeName(obj.output_path)||typeof obj.source_sha256!=='string'||!/^[a-f0-9]{64}$/i.test(obj.source_sha256)||obj.output_path.split('/')[1]!==obj.category_dir)throw Error(`manifest.jsonlの${n+1}行に不正なID・パス・SHAがあります。`);
- if(obj.library_tier!=='UNVERIFIED_AST_CANDIDATE'||obj.human_approved!==false)throw Error(`manifest.jsonlの${n+1}行は未確認AST候補ではありません。`);seen.add(obj.source_id);list.push(obj);});return list;}
-async function loadFolder(list){const candidates=[...list];if(!candidates.length)throw Error('フォルダが空です。');const paths=new Map();for(const f of candidates){const key=pathFromEntry(f);if(!key||paths.has(key))throw Error(`フォルダ選択で重複・欠損パス: ${key}`);paths.set(key,f);}
- const manifest=paths.get('manifest.jsonl'),summary=paths.get('summary.json');if(!manifest||!summary)throw Error('v1フォルダのmanifest.jsonlとsummary.jsonが必要です。audio単体ではなくv1を選んでください。');
- const info=JSON.parse(await summary.text());if(info.schema_version!=='localvoice.ast-batch.v1'||info.tier!=='UNVERIFIED_AST_CANDIDATE'||typeof info.profile!=='string'||typeof info.version!=='string'||typeof info.run_id!=='string'||typeof info.input_sha256!=='string')throw Error('未対応の候補ライブラリsummary.jsonです。');
- const parsed=parseJsonl(await manifest.text());if(parsed.length!==info.source_count)throw Error(`manifest行数${parsed.length}とsummaryの入力数${info.source_count}が異なります。`);
- const matched=[],seenPaths=new Set();for(const r of parsed){if(seenPaths.has(r.output_path))throw Error('重複したWAV出力パスです: '+r.output_path);seenPaths.add(r.output_path);const f=paths.get(r.output_path);if(!f)throw Error('WAVが見つかりません: '+r.output_path);matched.push({...r,file:f});}
- const wavFiles=[...paths.keys()].filter(p=>p.toLowerCase().endsWith('.wav'));if(wavFiles.length!==parsed.length)throw Error(`WAV数${wavFiles.length}とmanifest行数${parsed.length}が異なります。`);
- // Validate all metadata before committing browser state; no partial import.
- state.records=matched.sort((a,b)=>a.source_id.localeCompare(b.source_id));state.byId=new Map(state.records.map(x=>[x.source_id,x]));state.review=new Map();state.info=info;state.mode='priority';byId('priority').classList.add('selected');byId('all').classList.remove('selected');byId('search').value='';byId('decisionFilter').value='';byId('onlyPending').checked=false;
- cleanUrl();state.current=null;state.position=0;state.dirty=false;filterList();
- tell(`${state.records.length}件の未確認AST候補を読み込みました。通常会話以外の${state.records.filter(i=>i.category_dir!=='01_通常会話').length}件を優先表示しています。まず必要な音声だけ聴いてください。`);
-}
+function getExportRecords(){return [...state.review.entries()].map(([id,r])=>{const x=state.byId.get(id);return {source_id:id,source_sha256:x.source_sha256,ast_category:astCategory(x),...r};}).sort((a,b)=>a.source_id.localeCompare(b.source_id));}
+function exportJson(){if(!state.info){tell('まずライブラリを読み込んでください。',true);return;}
+ const i=state.info;const data={schema:'localvoice.ast-candidate-review.v1',created_at:changedAt(),library:{profile:i.profile,version:i.version,run_id:i.run_id,input_sha256:i.input_sha256,model_id:i.model_id,source_count:state.records.length},records:getExportRecords()};
+ dl(JSON.stringify(data,null,2),'localvoice_ast_candidate_review_'+i.version+'.json','application/json');state.dirty=false;tell('レビューJSONを保存しました。');}
+function exportCsv(){if(!state.info){tell('まずライブラリを読み込んでください。',true);return;}
+ const cols=['source_id','source_sha256','ast_category','manual_category','decision','identity','quality','reject_reason','memo','updated_at'];
+ const rows=getExportRecords().filter(r=>state.priorIds.has(r.source_id)||r.decision||r.manual_category||r.memo||r.identity!=='unverified'||r.quality!=='unverified');
+ const csv='\ufeff'+[cols,...rows.map(r=>cols.map(k=>r[k]??''))].map(row=>row.map(safeExportCsv).join(',')).join('\r\n')+'\r\n';
+ dl(csv,'localvoice_ast_review_decisions_'+state.info.version+'_cumulative.csv','text/csv;charset=utf-8');
+ tell(rows.length+'件の累積CSVを保存しました。metadata reviseで新バージョンを作成してください。');}
+function assertRecord(v,lookup=state.byId){if(!v||typeof v!=='object'||typeof v.source_id!=='string'||!lookup.has(v.source_id))throw Error('未知のレビューID: '+v?.source_id);
+ const x=lookup.get(v.source_id);if(v.source_sha256!==x.source_sha256||v.ast_category!==astCategory(x))throw Error('SHA/AST基準値が一致しません: '+v.source_id);
+ if(typeof v.decision!=='string'||(v.decision!==''&&!DECISIONS.has(v.decision)))throw Error('判定が不正: '+v.source_id);
+ if(typeof v.manual_category!=='string'||(v.manual_category!==''&&!ALLOWED_CATEGORIES.has(v.manual_category)))throw Error('手動分類が不正: '+v.source_id);
+ if(!IDENTITIES.has(v.identity)||!QUALITIES.has(v.quality)||!REASONS.has(v.reject_reason)||Boolean(v.reject_reason)!==(v.decision==='reject'))throw Error('品質・除外理由が不正: '+v.source_id);
+ if(typeof v.memo!=='string'||v.memo.length>2000||typeof v.updated_at!=='string'||v.updated_at.length>80)throw Error('メモ・時刻が不正: '+v.source_id);
+ return {decision:v.decision,manual_category:v.manual_category,identity:v.identity,quality:v.quality,reject_reason:v.reject_reason,memo:v.memo,updated_at:v.updated_at};}
+function parseReviewCsv(raw){const rows=[];const value=raw.replace(/^\uFEFF/,'');let row=[],field='',quoted=false,wasQuote=false;
+ for(let j=0;j<value.length;j++){const c=value[j];
+  if(quoted){if(c==='"'&&value[j+1]==='"'){field+='"';j++;}else if(c==='"'){quoted=false;wasQuote=true;}else field+=c;}
+  else if(c==='"'){if(field||wasQuote)throw Error('CSVの引用符が不正');quoted=true;}
+  else if(c===','){row.push(field);field='';wasQuote=false;}
+  else if(c==='\r'||c==='\n'){if(c==='\r'&&value[j+1]==='\n')j++;row.push(field);rows.push(row);row=[];field='';wasQuote=false;}
+  else{if(wasQuote)throw Error('CSVの引用符の直後に不正な文字');field+=c;}}
+ if(quoted)throw Error('CSVの引用符が閉じられていません');if(row.length||field){row.push(field);rows.push(row);}
+ const cols=['source_id','source_sha256','ast_category','manual_category','decision','identity','quality','reject_reason','memo','updated_at'];
+ const h=rows.shift();if(!h||h.length!==cols.length||h.some((v,i)=>v!==cols[i]))throw Error('CSVヘッダーが一致しません');
+ return rows.filter(r=>r.length!==1||r[0]!=='').map((r,i)=>{if(r.length!==cols.length)throw Error('CSV列数不一致: '+(i+2));return Object.fromEntries(cols.map((k,j)=>[k,r[j]]));});}
+async function importReview(file){if(!state.info)throw Error('先にライブラリを読み込んでください');const raw=await file.text();let records,kind;
+ if(raw.replace(/^\uFEFF/,'').trimStart().startsWith('{')){const data=JSON.parse(raw.replace(/^\uFEFF/,''));
+  if(data.schema!=='localvoice.ast-candidate-review.v1'||!Array.isArray(data.records)||!data.library)throw Error('未対応JSON形式です');
+  for(const k of ['profile','run_id','input_sha256','source_count']){const expected=k==='source_count'?state.records.length:state.info[k];if(data.library[k]!==expected)throw Error('別ライブラリのレビューです: '+k);}
+  if(data.library.model_id&&state.info.model_id&&data.library.model_id!==state.info.model_id)throw Error('model_idが一致しません');
+  records=data.records;kind='JSON';
+ }else{records=parseReviewCsv(raw);kind='CSV';}
+ const next=new Map();for(const v of records){const r=assertRecord(v);if(next.has(v.source_id))throw Error('レビューIDが重複: '+v.source_id);next.set(v.source_id,r);}
+ for(const id of state.priorIds)if(!next.has(id))throw Error('以前のレビューが欠落しています: '+id+'。累積CSV/JSONが必要です。');
+ state.review=next;for(const id of next.keys())state.priorIds.add(id);state.dirty=false;filterList();tell(next.size+'件のレビュー'+kind+'を復元しました。');}
+function pathFromEntry(f){const p=(f.webkitRelativePath||'').replaceAll('\\','/');return p?p.split('/').slice(1).join('/'):'';}
+function fileMap(files){const paths=new Map();for(const f of files){const k=pathFromEntry(f);if(!k||paths.has(k))throw Error('重複・無効なファイルパス: '+k);paths.set(k,f);}return paths;}
+function sourcePathValid(p){return typeof p==='string'&&p.length>0&&!p.includes('\\')&&!p.startsWith('/')&&!p.includes('\0')&&!p.split('/').some(v=>!v||v==='..'||v==='.')&&p.toLowerCase().endsWith('.wav');}
+function parseJsonl(text){const seen=new Set(),rows=[];text.split(/\r?\n/).forEach((line,n)=>{if(!line.trim())return;let x;try{x=JSON.parse(line);}catch(e){throw Error('manifest.jsonlのJSON不正: '+(n+1));}
+ if(typeof x.source_id!=='string'||seen.has(x.source_id)||!safeName(x.output_path)||!sourcePathValid(x.relative_path)||typeof x.source_sha256!=='string'||!/^[a-f0-9]{64}$/i.test(x.source_sha256)||x.output_path.split('/')[1]!==x.category_dir)throw Error('manifest行に不正なパス・ID・SHA: '+(n+1));
+ if(!['UNVERIFIED_AST_CANDIDATE','UNVERIFIED_REVIEWED_CANDIDATE'].includes(x.library_tier)||x.human_approved!==false||!ALLOWED_CATEGORIES.has(astCategory(x)))throw Error('非対応の候補種別: '+(n+1));
+ seen.add(x.source_id);rows.push(x);});return rows;}
+function readSummary(x,metadata){if(!x||typeof x.profile!=='string'||typeof x.version!=='string'||typeof x.run_id!=='string'||!/^[a-f0-9]{64}$/i.test(x.input_sha256||'')||!Number.isSafeInteger(x.source_count)||x.source_count<1)throw Error('summaryの識別子が不正');
+ if(!((metadata&&x.tier==='METADATA_ONLY_UNVERIFIED_CANDIDATE')||(!metadata&&['UNVERIFIED_AST_CANDIDATE','UNVERIFIED_REVIEWED_CANDIDATE'].includes(x.tier))))throw Error('未対応のsummary種別');
+ return x;}
+function previousReview(x){const r={decision:x.review_decision||'',manual_category:x.manual_category||'',identity:x.review_identity||'unverified',quality:x.review_quality||'unverified',reject_reason:x.review_reason||'',memo:x.review_memo||'',updated_at:x.review_updated_at||''};
+ return r.decision||r.manual_category||r.identity!=='unverified'||r.quality!=='unverified'||r.reject_reason||r.memo?r:null;}
+function activate(entries,info,files,isOriginal){if(entries.length!==info.source_count)throw Error('WAV件数とsummaryの件数が一致しません');
+ const prepared=[],used=new Set();for(const e of entries){if(e.profile!==info.profile)throw Error('別profileのmanifestがあります');const key=isOriginal?e.relative_path:e.output_path;
+  if(used.has(key)||!files.has(key))throw Error('WAVが欠落・重複しています: '+key);used.add(key);prepared.push({...e,file:files.get(key)});}
+ const wavs=[...files.keys()].filter(p=>p.toLowerCase().endsWith('.wav'));if(wavs.length!==entries.length)throw Error('選択フォルダのWAV数が違います: '+wavs.length);
+ const lookup=new Map(prepared.map(x=>[x.source_id,x])),reviews=new Map();for(const x of prepared){const r=previousReview(x);if(r)reviews.set(x.source_id,assertRecord({source_id:x.source_id,source_sha256:x.source_sha256,ast_category:astCategory(x),...r},lookup));}
+ cleanUrl();state.records=prepared.sort((a,b)=>a.source_id.localeCompare(b.source_id));state.byId=lookup;state.review=reviews;state.priorIds=new Set(reviews.keys());state.info=info;state.pendingMeta=null;state.pendingOriginal=null;
+ state.current=null;state.position=0;state.mode='priority';state.dirty=false;byId('priority').classList.add('selected');byId('all').classList.remove('selected');byId('search').value='';byId('categoryFilter').value='';byId('decisionFilter').value='';byId('onlyPending').checked=false;
+ filterList();tell(info.version+'：WAV '+prepared.length+'件、過去レビュー'+reviews.size+'件を引き継ぎました。');}
+async function loadCandidateFolder(list){const f=fileMap(list),m=f.get('manifest.jsonl'),sum=f.get('summary.json');if(!m||!sum)throw Error('候補フォルダ直下のmanifest.jsonlとsummary.jsonが必要です');
+ const info=readSummary(JSON.parse(await sum.text()),false),entries=parseJsonl(await m.text());activate(entries,info,f,false);}
+async function loadMetadataFolder(list){const files=fileMap(list),m=files.get('manifest.jsonl'),sum=files.get('summary.json'),r=files.get('receipt.json');if(!m||!sum||!r)throw Error('versions/v2等の直下にmanifest.jsonl、summary.json、receipt.jsonが必要です');
+ const info=readSummary(JSON.parse(await sum.text()),true),receipt=JSON.parse(await r.text());if(receipt.profile!==info.profile||receipt.version!==info.version||receipt.run_id!==info.run_id||receipt.input_sha256!==info.input_sha256)throw Error('receiptとsummaryが一致しません');
+ const entries=parseJsonl(await m.text());if(entries.length!==info.source_count)throw Error('manifestの件数が違います');
+ state.pendingMeta={info,entries};if(state.pendingOriginal)activate(entries,info,state.pendingOriginal,true);else tell('メタデータ'+info.version+'を読み込みました。続けて原本audioフォルダを選択してください。');}
+async function loadOriginalFolder(list){state.pendingOriginal=fileMap(list);if(state.pendingMeta)activate(state.pendingMeta.entries,state.pendingMeta.info,state.pendingOriginal,true);else tell('原本audioを読み込みました。続けてversions/v2等を選択してください。');}
 function boot(){for(const [key,label] of CATEGORIES){for(const id of ['categoryFilter','manualCategory']){const opt=document.createElement('option');opt.value=key;opt.textContent=label;byId(id).append(opt);}}
  byId('libraryDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存のレビューを破棄して別のライブラリを読み込みますか？')){e.target.value='';return;}
  try{await loadFolder(list);}catch(err){tell('読み込みを中断: '+err.message,true);}e.target.value='';};
