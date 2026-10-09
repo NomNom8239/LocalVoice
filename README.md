@@ -1,47 +1,75 @@
 # LocalVoice
 
-配信アーカイブや既存音声から、対象話者の音声を抽出・確認し、データセットを作成するローカルパイプラインです。既存のRVCデータセット生成処理は維持しています。
+配信アーカイブ・既存WAVから対象話者の音声を抽出・本人候補として保存し、**AST音響分類 → 必要な音声だけ人手レビュー → 分類・レビュー履歴をバージョン管理**するローカルパイプラインです。既存の音源分離・話者照合・RVCデータセット生成処理も維持しています。
 
-**Irodori-TTSのZero-shot VoiceDesignは、公式リポジトリを `Irodori-TTS/` に独立してクローンして使用します。** 旧LoRA/旧ASR/旧スタイル分類コードを戻さず、Phase 3以降の文字起こしと分類は新規設計します。
+公式Irodori-TTSのZero-shot VoiceDesignは、独立した `Irodori-TTS/` クローンで動作させます。LocalVoice独自の機能は公式クローンへ追加せず、ユーザーが選んだ参照WAVを手動で指定します。
 
-**必読： [ディレクトリ責務・追加ルール](docs/PROJECT_LAYOUT.md)** — `data/` 保全、公式Irodoriへの独自ファイル追加禁止、新規コード・一時出力・成果物の保存先を定義しています。下記のパイプラインとパス説明は、既存の取得・RVC処理についての説明です。
+**最初に読む資料：** [ディレクトリ責務・安全規則](docs/PROJECT_LAYOUT.md) ／ [AST一括分類手順](docs/AST_BATCH_RUNBOOK.md) ／ [分類・レビュー履歴の運用](docs/VERSIONED_AUDIO_METADATA.md)
 
-**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**ASR12音声Pilotは `feature/phase3-asr-pilot` で実装済み、Kotoba/Whisperとも実CUDAで12/12処理済み**（モデル正式採用・48件比較は後続保留）。[ASR手順](docs/ASR_PILOT_RUNBOOK.md) を参照。**LV-R04はASTによる既存1,167WAVの実機分類が完了（unknown=5、errors=0）。** [AST/CLAP音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)。未確認候補ライブラリv1はWindows実機で1,167WAV出力を確認済み。ブラウザレビューCSVを反映するv2生成コマンドを追加し、本人性・品質の最終承認は別工程とする。
+## 現在の到達点（2026-10-09）
 
-## ASTの一括カテゴリ整理（暫定ライブラリ）
+**`Ui_Shigure` の既存1,167 WAVについて、分類フェーズはv2を現行版として一旦完了**しています。v2はあくまで**暫定候補の分類ライブラリ**であり、全件が本人性・音質・学習適格性の最終承認済みという意味ではありません。
 
-既存 `data/training_audio/Ui_Shigure/audio/` のWAV 1,167件を対象に、**ASTだけ**で分類可能な音声を日本語カテゴリ別フォルダへ**未確認候補として**コピーする実装を追加しました。
+| 項目 | 確認済みの結果 |
+| --- | --- |
+| AST一括分類 | 1,167/1,167件、unknown 5、推論エラー0 |
+| AST実行ID | `ast_batch_20261009_163035451` |
+| 人手レビュー | 重点105件（レビュー適合候補100、要確認5）、未レビュー1,062 |
+| 現在の分類版 | **v2**（`outputs/candidates/Ui_Shigure/v2/`） |
+| 履歴保存 | `outputs/metadata/Ui_Shigure/versions/v1/`、`v2/` にメタデータのみ保存 |
+| 履歴整合性 | v1・v2とも `metadata verify` が `VERIFIED_METADATA_AND_SOURCE_WAV`、参照1,167・新規WAVコピー0 |
+| Windows回帰テスト | `tests/test_style_batch.py` + `tests/test_review_export.py`：**22 passed** |
+| 共通レビューHTML | 実装・模擬JavaScript検証済み。**実Chrome/Edge受入は未確認** |
 
-- [Windows 1,167件一括処理・中断再開・フォルダ出力](docs/AST_BATCH_RUNBOOK.md)
-- CLI：`python -m localvoice style-batch inventory|run|summary|export`
-- 中断後の `run --resume`、コピー中断後の `export --resume-export`、元WAVのSHA検証、未分類/失敗の保全に対応
-- 暫定出力：`outputs/candidates/Ui_Shigure/v1/audio/<日本語カテゴリ>/`（**未確認**、正式承認済みの `outputs/datasets/` とは別）
-- **Windows実機AST処理完了：1,167/1,167、未分類5件、推論エラー0件。** 機械分類結果は人手承認/本人確認/音質保証ではありません。
+- **Done：** AST一括候補分類、v1暫定候補出力、重点105件レビュー反映v2、メタデータ履歴v1/v2の保存・SHA照合。
+- **受入待ち：** 共通HTMLでの実フォルダ読み込み・音声再生・CSV/JSON往復・次版dry-run。別profileの初回v1・再分類v2以降は模擬データで確認済み。
+- **後続・別工程：** 独立した全件QC/本人性と正式な `outputs/datasets/` 採用、ASR48件比較、新規配信アーカイブの継続取り込みE2E。現在の分類v2の完了条件にはしません。
 
-## HTMLレビューCSVの反映（v2）
+## AST分類から手動レビューまで（全profile共通）
 
-以前のASRレビューHTMLを基にしたブラウザ画面で保存した `localvoice_ast_review_decisions_v1.csv` を
-SHA照合付きで取り込み、**v1を変更せず**カテゴリ修正版 `outputs/candidates/Ui_Shigure/v2/` を作成する。
+音響分類のPython CLIは `python -m localvoice style-batch` です。**HTMLは分類済み候補を試聴・修正するツールであり、AST自動推論自体は実行しません。**
 
-- [Windows CSV反映→不変候補ライブラリv2手順](docs/REVIEW_CSV_APPLY_RUNBOOK.md)
-- CLI：`python -m localvoice style-batch apply-review --run-id <AST run ID> --review-csv <file.csv> --source-version v1 --version v2 --dry-run`
-- `keep + identity=self + quality=ok` のみ「レビュー適合候補」。品質・本人性に注意が必要な音声、保留、除外は別フォルダへ
-- CSVに無いWAVも消さず、既存AST分類で保持。正式な `outputs/datasets/` への自動昇格はしない
-- CSVと原本候補を照合できない場合は実行を中断。途中コピーは同じCSVの `--resume-export` で再開
+1. **初回の自動分類：** 対象profileの元WAVを確認し、`style-batch inventory` → `run` → `summary`。初回のAST候補ライブラリが必要なら `export --version v1` で `outputs/candidates/<profile>/v1/` に出力（初回だけのコピー）。
+2. **初回の手動レビュー：** リポジトリ直下の [`localvoice_ast_candidate_reviewer.html`](localvoice_ast_candidate_reviewer.html) をChrome/Edgeで開き、**v1候補フォルダ**を選ぶ。試聴・分類修正を行い、**累積レビューCSVと保存用JSON**をダウンロードする。
+3. **履歴として初回版を保存：** `style-batch metadata archive --run-id <run> --version v1` → `metadata verify`。初回レビューからv2の**メタデータ版**を作成する場合は `metadata revise --profile <profile> --from-version v1 --version v2 --review-csv <CSV>` を使用。これにはv1履歴保存が必要です。
+4. **2回目以降のレビュー：** HTMLに最新のv2、v3…を読み込み、以前のレビュー判断を引き継いで必要な音声だけ再分類する。累積CSV/JSONを `outputs/metadata/<profile>/inbox/` に保存し、`metadata revise --from-version <現行版> --version <新しい版> --review-csv <CSV>` で次の不変メタデータ版を作成する。
+5. **必要な場合だけWAVフォルダを再生成：** `metadata materialize` は元WAVから実際にコピーを作成するコマンドです。HTMLでは**メタデータ版フォルダ＋原本WAVフォルダ**を読み込めるため、通常の試聴や再分類に追加コピーは不要です。
 
-## 分類・レビュー履歴のCSV/JSONバージョン管理
+### ブラウザレビューのフォルダ選択
 
-過去のカテゴリを保つために1,167件のWAVを毎回コピーする必要はありません。
-`python -m localvoice style-batch metadata {archive|revise|verify|materialize}`
-を追加し、既存のv1/v2を**メタデータのみの履歴**として退避できます。
-新しいレビューCSVを適用したv3以降は、CSV・JSON・manifestだけを作成し、
-WAVフォルダはエクスプローラーで閲覧したい版に限って明示的に生成します。
+- **方法A（候補WAVフォルダがある）：** `outputs/candidates/<profile>/<version>/` を選択。直下の `manifest.jsonl` と `summary.json`、`audio/` を利用。v1初回レビュー、v2以降の既存レビュー復元に対応。
+- **方法B（候補WAVのコピーがない）：** `outputs/metadata/<profile>/versions/<version>/` と `data/training_audio/<profile>/audio/` を別々に指定。WAVを複製せず試聴する。
+- CSV/JSON読込みではsource ID、記録済みSHA、元AST分類を検証し、既存レビューが欠落する読み込みは拒否します。HTMLは音声の**全件バイトSHA照合を実行しない**ため、保全確認にはCLIの `metadata verify` を使用してください。
 
-- [運用とWindows移行手順](docs/VERSIONED_AUDIO_METADATA.md)
-- `outputs/metadata/Ui_Shigure/inbox/` — Chrome/Edgeから保存したCSV・JSONの置き場所
-- `outputs/metadata/Ui_Shigure/versions/v1,v2,v3/.../` — SHA付き不変分類・レビュー履歴
-- 元音声 `data/training_audio/Ui_Shigure/audio/` はread-only。旧 `outputs/candidates/Ui_Shigure/v1,v2/` は**自動削除しません**
-- 過去の音声フォルダは `metadata materialize` で明示的に再生成。正式承認済み `outputs/datasets/` とは別
+**重要：** `keep + identity=self + quality=ok` は「レビュー適合**候補**」であって正式な学習素材承認ではありません。曖昧な音声は `96_要確認_使用不可`、保留は `97_保留`、除外は `98_除外` に区分し、未レビューも勝手に承認しません。
+
+### 分類・レビュー履歴の保存先
+
+```text
+data/training_audio/<profile>/audio/          # 原本WAV（保持・読み取り専用）
+work/<AST-run-id>/                           # AST入力・予測・SHA等の証跡
+outputs/candidates/<profile>/v1,v2.../       # 必要な場合だけ保持するWAV付き閲覧用候補
+outputs/metadata/<profile>/
+  inbox/                                    # ブラウザから保存したCSV・JSON
+  versions/v1,v2,v3.../                     # メタデータだけの不変分類・レビュー履歴
+    manifest.jsonl / index.csv / summary.json / receipt.json
+    review/                                 # レビュー版のCSVと任意のJSON
+outputs/datasets/<profile>/<version>/        # 別のQC/承認ゲートを経た正式採用専用
+```
+
+既存v1/v2候補WAVフォルダは**自動削除されません**。実際の復元コピーの実証は未完了です。整理前には元WAV・AST run証跡・メタデータのバックアップを確認してください。**CSV/JSONだけではWAV自体を復元できません**。版の上書きはせず、v3以降に更新を積み重ねます。
+
+### 既存v1→v2コピー方式について
+
+初回レビューCSVをv1に適用してWAV付きv2を作る `style-batch apply-review` は、**既存リリースの再現・互換用途**として残っています。手順は [旧v1→v2レビューCSV反映](docs/REVIEW_CSV_APPLY_RUNBOOK.md)。**今後のv3以降の履歴更新には使わず、WAVを追加コピーしない `metadata revise` を使ってください。**
+
+詳細：[履歴・再分類のWindows手順](docs/VERSIONED_AUDIO_METADATA.md) ／ [AST分類バッチ手順](docs/AST_BATCH_RUNBOOK.md)
+
+## ASR補助機能（後続保留）
+
+[ASR設計](docs/PHASE3_JAPANESE_ASR.md) ／ [12件Pilot手順](docs/ASR_PILOT_RUNBOOK.md) ／ [音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)
+
+Kotoba-Whisper v2.0とWhisper large-v3の12件CUDA Pilotは両方処理完了。人工無音でのハルシネーションや非言語での反復があり、**48件の本比較・正式モデル採用は保留**。音響スタイル分類の必須先行ゲートではありません。
 
 ## Pipeline
 
