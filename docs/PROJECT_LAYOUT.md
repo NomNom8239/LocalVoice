@@ -66,6 +66,35 @@ LocalVoice/
 
 Do not create placeholder directories or files merely to match the diagram. On the active `feature/phase4-acoustic-pilot` branch, `src/localvoice/style/batch.py`, `review_export.py`, `catalog.py`, `localvoice_ast_candidate_reviewer.html`, `work/` (local), `tests/`, and `outputs/metadata/` (local) have concrete roles. `quality/`, approved `dataset/` promotion and final `outputs/datasets/` remain future capabilities. AST candidate output and the reviewer do **not** approve training audio.
 
+## First-profile Reference Bank bootstrap (2026-10-09)
+
+The existing tracked `scripts/localvoice.py` is responsible for **both** existing-bank
+archive collection and first-speaker bootstrap. The new design does not create a
+second acquisition CLI or copy LocalVoice code into upstream `Irodori-TTS/`.
+
+- **Bank present:** legacy acquire → Vocals separation → diarization → speaker
+  embedding comparison and SELF/REVIEW/OTHER flow continues.
+- **Bank absent:** download / Vocals first, diarization once, create speaker
+  preview snippets inside the **new run only**, ask the user to listen and select
+  the target speaker label(s), produce up to 24 screened 2–20-second candidate
+  clips, call the existing `scripts/build_reference_bank.py`, then classify
+  using the same diarization evidence. Do not assume the longest/loudest
+  speaker or a different diarization label is another human.
+- The run stores `bootstrap/previews/` and `bootstrap/selected_reference_wavs/`.
+  Bank NPZ/JSON go to `data/reference_bank/<profile>/`. The input source,
+  existing run directories and established Bank are never overwritten in this
+  workflow. `--force` retains its **legacy destructive run-dir behavior**
+  and must not be used to recover an interrupted bootstrap casually.
+- Preliminary automated quality gates do not replace speaker identity
+  confirmation, final recording quality QC, or human dataset approval.
+- **Runtime acceptance pending:** tests added, but the actual user Windows
+  E2E and existing Ui_Shigure reference-bank regression have not been run.
+- Cross-site yt-dlp source-ID namespacing, fully automated new archive → AST
+  incremental integration, and bootstrap interruption resume are separate
+  LV-R07 follow-ups, not silently claimed here.
+
+See [operational design and acceptance](REFERENCE_BANK_BOOTSTRAP.md).
+
 ## Existing acquisition compatibility: exception, not the new pattern
 
 `config.toml` currently points existing code to `data/source`, `data/wav_master`, `data/diarization`, `data/reference_bank`, `data/runs`, `data/training_audio`, and `data/rvc_dataset`.
