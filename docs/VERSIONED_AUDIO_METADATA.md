@@ -1,6 +1,6 @@
 # LocalVoice — WAVを共通化した分類・レビュー履歴管理
 
-Status: implementing. This document defines the metadata-first successor to
+Status: implemented, with Windows browser acceptance pending. This document defines the metadata-first successor to
 the copy-per-version `outputs/candidates/<profile>/v1,v2` releases.
 
 ## Purpose and ownership
@@ -63,6 +63,61 @@ Unreviewed clips retain the AST category and are **not automatically approved**.
 5. Keep `inbox/` as the human-facing location for downloaded `.csv` and `.json`.
    Importing a version makes its own immutable evidence copies in `review/`.
 
+## Manual reclassification in the existing browser reviewer
+
+The tracked repository-root `localvoice_ast_candidate_reviewer.html` opens locally
+in Chrome/Edge. It is the same reviewer used for v1, now extended for v2 and
+later metadata versions. No new HTML copy or WAV copy is required.
+
+**Method A (when the v2 WAV candidate folder still exists):**
+
+1. Open `localvoice_ast_candidate_reviewer.html`.
+2. Select `outputs/candidates/Ui_Shigure/v2` with the first folder picker
+   (select v2 itself, **not** its `audio` child).
+3. The reviewer reconstructs existing manual decisions from v2's
+   `manifest.jsonl`, preserving reviewed records on subsequent export.
+
+**Method B (when the materialized v2 WAV folder was removed):**
+
+1. Select `outputs/metadata/Ui_Shigure/versions/v2` using the metadata picker.
+2. Select `data/training_audio/Ui_Shigure/audio` using the original-WAV picker.
+3. Browse/reclassify directly against the original WAVs by `relative_path`;
+   do not run `materialize` solely to use the reviewer.
+
+For either method, a prior review CSV/JSON can also be imported with the
+**CSV/JSON picker**. Existing decisions are never silently dropped: all
+previously reviewed source IDs must appear in the imported cumulative file.
+The reviewer checks each recorded `source_id`, `source_sha256`, and
+**original** `ast_category` from v2 (not v2's category folder name). A review
+that contains an unknown/mismatched source is rejected without partial import.
+
+After reviewing, download **both** JSON (future resume) and cumulative CSV
+(`metadata revise` input). Put them in
+`outputs/metadata/Ui_Shigure/inbox/` and run:
+
+```powershell
+$csv = ".\outputs\metadata\Ui_Shigure\inbox\localvoice_ast_review_decisions_v2_cumulative.csv"
+$json = ".\outputs\metadata\Ui_Shigure\inbox\localvoice_ast_candidate_review_v2.json"
+
+.\.venv\Scripts\python.exe -m localvoice style-batch metadata revise `
+  --profile Ui_Shigure --from-version v2 --version v3 `
+  --review-csv $csv --review-json $json --dry-run
+
+# After inspecting the dry-run, run the same command without --dry-run.
+```
+
+If the downloaded filenames differ, substitute the actual paths. The HTML
+does **not** write to v2 or automatically publish v3. `metadata revise`
+creates an immutable metadata-only v3 with zero copied WAVs.
+`keep + self + ok` is needed for `reviewed_usable`; editing the manual
+category alone records the classification but stays in a caution grouping.
+
+The browser validates metadata references and exact selected file paths; it
+does not recompute all 1,167 WAV byte SHA-256 hashes. Run
+`metadata verify --profile Ui_Shigure --version v2` before reviewing and
+`metadata verify --profile Ui_Shigure --version v3` after publishing.
+Browser verification on the user's actual folder selection is still pending.
+
 ## Safety gates
 
 - Fail closed on unknown/duplicate source IDs, CSV SHA/AST mismatches, unknown
@@ -85,8 +140,8 @@ AST run. They **never** remove the old materialized `v1/` and `v2/`.
 ```powershell
 cd F:\AIProjects\LocalVoice
 git fetch origin
-git switch feature/versioned-review-metadata
-git pull --ff-only origin feature/versioned-review-metadata
+git switch feature/phase4-acoustic-pilot
+git pull --ff-only origin feature/phase4-acoustic-pilot
 .\.venv\Scripts\python.exe -m pytest tests/test_style_batch.py tests/test_review_export.py -q
 
 $runId = "ast_batch_20261009_163035451"
