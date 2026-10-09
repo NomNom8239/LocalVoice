@@ -14,15 +14,17 @@
 </head>
 <body><main>
 <header>
-<div class="headertop"><h1>LocalVoice <span style="color:var(--cyan)">音声レビュー</span> — ASTライブラリ v1</h1><span class="chip">ローカル専用 / WAV原本変更なし</span></div>
-<p class="intro">前のASR Pilot用レビューHTMLをベースに、1,167件のAST分類結果をその場で再生・確認する画面です。<strong>必要なものだけ採用・保留・除外</strong>し、判断結果は別のJSON/CSVとして保存します。12件のPilot枠制限はありません。</p>
+<div class="headertop"><h1>LocalVoice <span style="color:var(--cyan)">音声レビュー</span> — v2以降の再分類</h1><span class="chip">ローカル専用 / WAV原本変更なし</span></div>
+<p class="intro">AST分類とv2の過去レビューを引き継ぎ、必要なWAVだけ手動再分類します。変更は累積CSV/JSONで保存。次版の作成には別途metadata reviseを実行します（音声の複製なし）。</p>
 </header>
 <section class="panel" id="loadPanel">
-<div class="section-title"><h2>① 暫定ライブラリ v1 のフォルダを選ぶ</h2><span class="step">最初に一度だけ</span></div>
-<div class="instructions">Chrome / Edgeで <code>F:\AIProjects\LocalVoice\outputs\candidates\Ui_Shigure\v1</code> をフォルダごと選択してください。<strong>audioフォルダ単体ではなく、その1つ上のv1フォルダ</strong>です。manifest.jsonlとWAVの対応を自動確認します。</div>
+<div class="section-title"><h2>① v2候補フォルダ、またはメタデータと元WAVを選ぶ</h2><span class="step">最初に一度だけ</span></div>
+<div class="instructions">Chrome / Edgeで <code>outputs/candidates/Ui_Shigure/v2</code> を選択。v2のWAVコピーがない場合は <code>outputs/metadata/Ui_Shigure/versions/v2</code> と <code>data/training_audio/Ui_Shigure/audio</code> をそれぞれ選んでください。選んだ音声は送信・移動されません。</div>
 <div class="upload-grid" style="margin-top:14px">
- <div><label for="libraryDir">フォルダ（v1）を読み込む</label><input id="libraryDir" type="file" webkitdirectory directory multiple><span class="inputhint">ブラウザ内でのみ参照。音声・索引は外部送信しません。</span></div>
- <div><label for="savedReview">前回のレビューを復元（任意）</label><input id="savedReview" type="file" accept=".json,application/json"><span class="inputhint">先にv1を読み込んでから、レビュー保存JSONを選びます。別run・別WAVハッシュのデータは拒否。</span></div>
+ <div><label for="libraryDir">方法A：v2候補フォルダ（WAV付き）</label><input id="libraryDir" type="file" webkitdirectory directory multiple><span class="inputhint">v2フォルダそのもの。従来v1も対応。</span></div>
+ <div><label for="savedReview">保存済みCSV/JSONを読み込む（任意）</label><input id="savedReview" type="file" accept=".csv,.json,text/csv,application/json"><span class="inputhint">v2の既存レビューはmanifestから自動復元。読み込み時は過去判定を保持。</span></div>
+ <div><label for="metadataDir">方法B：versions/v2メタデータ</label><input id="metadataDir" type="file" webkitdirectory directory multiple><span class="inputhint">outputs/metadata/Ui_Shigure/versions/v2。</span></div>
+ <div><label for="originalDir">方法B：元WAVのaudioフォルダ</label><input id="originalDir" type="file" webkitdirectory directory multiple><span class="inputhint">data/training_audio/Ui_Shigure/audio。</span></div>
 </div>
 <div class="statrail" style="margin-top:15px">
  <div class="info"><small>WAV読込</small><b id="total">0</b><span class="labelnum">AST候補</span></div>
@@ -59,9 +61,9 @@
 <div class="row" style="margin-top:12px"><label class="checkbox-inline"><input id="autoAdvance" type="checkbox" checked>判定したら次の未判定へ移動</label></div>
 <div class="line"></div>
 <h3>聴感分類・本人性・音質のメモ</h3>
-<p class="hint">AST分類は変更しません。「手動分類」で聞こえたカテゴリに修正できます。本人性と録音品質は独立して記録します。</p>
+<p class="hint">元のAST分類は固定のまま、「手動分類」で聞こえたカテゴリを修正できます。本人性と録音品質は独立して記録します。</p>
 <div class="flexform">
- <div><label for="manualCategory">手動分類（変更なし＝ASTのまま）</label><select id="manualCategory"><option value="">AST候補を維持</option></select></div>
+ <div><label for="manualCategory">手動分類（空欄＝元のAST分類）</label><select id="manualCategory"><option value="">AST候補を維持</option></select></div>
  <div><label for="identity">話者</label><select id="identity"><option value="unverified">未確認</option><option value="self">本人と確認</option><option value="other">他人声</option><option value="overlap">複数話者・混話</option><option value="uncertain">判定不能</option></select></div>
  <div><label for="quality">録音品質</label><select id="quality"><option value="unverified">未確認</option><option value="ok">問題なし</option><option value="noise">ノイズ</option><option value="bgm">BGM・背景音</option><option value="clipping">音割れ・歪み</option><option value="overlap">声の重なり</option><option value="bad_audio">無音・破損・極端な低音量</option><option value="other">その他の問題</option></select></div>
 </div>
@@ -73,13 +75,13 @@
 </section>
 <section class="panel">
 <div class="section-title"><h2>③ レビュー履歴を保存・復元</h2><span class="step">出力は判断記録のみ</span></div>
-<p>「レビューJSON」は途中保存と再開用。「判断CSV」はExcel確認用です。どちらも<strong>元WAVを移動・削除・変更しません</strong>。ブラウザを閉じる前にJSONを保存してください。</p>
+<p>「レビューJSON」は途中保存と再開用。「判断CSV」は過去のレビューも含む累積CSVで、metadata reviseコマンドへの投入用です。どちらも<strong>元WAVを移動・削除・変更しません</strong>。ブラウザを閉じる前にCSVとJSONを保存してください。HTMLだけでv3は作成されません。</p>
 <div class="exportButtons">
  <button id="exportReview" class="primary" type="button">レビューJSONを保存</button>
  <button id="exportCsv" type="button">判断CSVを保存</button>
 </div>
 <p class="hint">保存JSONにはソースID、SHA-256、判定・手動分類・本人性・音質・メモだけを含みます。音声そのものは含まれません。読み込み時にライブラリのプロファイル・run・入力指紋・ファイルSHAと照合します。</p>
-<div id="status" class="message" role="status">v1フォルダを選択してください。</div>
+<div id="status" class="message" role="status">v2候補フォルダ、またはメタデータと原本audioを選んでください。</div>
 <details><summary>安全性と制限</summary><p>外部通信・音声のアップロード・Cookie・追跡はありません。HTMLは端末上で完結し、採用しても元WAVや暫定ライブラリを変更しません。保存ファイルはダウンロードフォルダへ生成するだけです。レビュー結果を正式版 <code>outputs/datasets/</code> に反映する処理は別工程です。</p><p class="warning">ブラウザ内で採用しただけでは本人確認・QC承認は完了しません。たとえば話者「本人と確認」および録音品質「問題なし」を記録することはできますが、それを人手で確認した範囲でだけ有効なレビュー証跡として扱ってください。</p></details>
 </section>
 <footer>LocalVoice AST Candidate Reviewer / 元HTML: LocalVoice ASR Pilot Reviewer。分類済みWAVは再推論せず参照するだけ。ページを閉じると未保存の変更が消えます。</footer>
@@ -98,11 +100,12 @@ const DECISIONS=new Set(['keep','hold','reject']);
 const IDENTITIES=new Set(['unverified','self','other','overlap','uncertain']);
 const QUALITIES=new Set(['unverified','ok','noise','bgm','clipping','overlap','bad_audio','other']);
 const REASONS=new Set(['','other_voice','mixed','noise','bgm','quality','not_useful','other']);
-const state={records:[],byId:new Map(),review:new Map(),order:[],current:null,position:0,mode:'priority',objectURL:null,dirty:false,info:null};
+const state={records:[],byId:new Map(),review:new Map(),priorIds:new Set(),order:[],current:null,position:0,mode:'priority',objectURL:null,dirty:false,info:null,pendingMeta:null,pendingOriginal:null};
 const changedAt=()=>new Date().toISOString();
 const defaultRecord=()=>({decision:'',manual_category:'',identity:'unverified',quality:'unverified',reject_reason:'',memo:'',updated_at:''});
 const editOf=id=>state.review.get(id)||defaultRecord();
-const effectiveCategory=item=>editOf(item.source_id).manual_category||item.category_dir;
+const astCategory=item=>item.ast_category||item.category_dir;
+const effectiveCategory=item=>editOf(item.source_id).manual_category||astCategory(item);
 function countDecisions(){const c={keep:0,hold:0,reject:0,unreviewed:0};for(const item of state.records){const d=editOf(item.source_id).decision;if(c[d]===undefined)c.unreviewed++;else c[d]++}return c;}
 function tell(msg,error=false){const p=byId('status');p.textContent=msg;p.className='message'+(error?' error':'');}
 function safeName(p){return typeof p==='string'&&p.startsWith('audio/')&&p.split('/').length===3&&!p.includes('\\')&&!p.split('/').includes('..')&&p.toLowerCase().endsWith('.wav')&&!p.includes('\0');}
@@ -110,7 +113,7 @@ function summaryLabel(info){return `${info.profile} / ${info.version} / run ${in
 function createChip(parent,value,className=''){const chip=document.createElement('span');chip.className='flag '+className;chip.textContent=value;parent.append(chip);}
 function selectedFile(){return state.order[state.position]||null;}
 function cleanUrl(){const audio=byId('audio');audio.pause();audio.removeAttribute('src');audio.load();if(state.objectURL){URL.revokeObjectURL(state.objectURL);state.objectURL=null;}}
-function matchFilter(item){const dec=editOf(item.source_id).decision||'unreviewed';if(state.mode==='priority'&&item.category_dir==='01_通常会話')return false;
+function matchFilter(item){const dec=editOf(item.source_id).decision||'unreviewed';if(state.mode==='priority'&&effectiveCategory(item)==='01_通常会話'&&item.category_dir==='01_通常会話')return false;
  const cat=byId('categoryFilter').value;if(cat&&effectiveCategory(item)!==cat)return false;
  const df=byId('decisionFilter').value;if(df&&dec!==df)return false;
  if(byId('onlyPending').checked&&dec!=='unreviewed')return false;
@@ -126,7 +129,7 @@ function render(){const counts=countDecisions();byId('total').textContent=state.
  byId('currentFile').textContent=item?item.output_path:'条件に合うWAVはありません（フィルタを確認）';
  const meta=byId('metadata');meta.replaceChildren();
  if(item){if(!state.objectURL){state.objectURL=URL.createObjectURL(item.file);byId('audio').src=state.objectURL;}
-  const r=editOf(item.source_id);createChip(meta,`ID: ${item.source_id}`);createChip(meta,`AST: ${item.category_dir}`);if(r.manual_category)createChip(meta,`手動: ${r.manual_category}`);if(item.category_score!==null&&item.category_score!==undefined)createChip(meta,`ASTスコア: ${Number(item.category_score).toFixed(3)}`);createChip(meta,`元: ${item.relative_path||'不明'}`);createChip(meta,r.decision?`判断: ${r.decision}`:'未判定',r.decision==='reject'?'danger':r.decision==='keep'?'ok':'');
+  const r=editOf(item.source_id);createChip(meta,`ID: ${item.source_id}`);createChip(meta,`AST: ${astCategory(item)}`);createChip(meta,`配置先: ${item.category_dir}`);if(r.manual_category)createChip(meta,`手動: ${r.manual_category}`);if(item.category_score!==null&&item.category_score!==undefined)createChip(meta,`ASTスコア: ${Number(item.category_score).toFixed(3)}`);createChip(meta,`元: ${item.relative_path||'不明'}`);createChip(meta,r.decision?`判断: ${r.decision}`:'未判定',r.decision==='reject'?'danger':r.decision==='keep'?'ok':'');
   byId('manualCategory').value=r.manual_category;byId('identity').value=r.identity;byId('quality').value=r.quality;byId('rejectReason').value=r.reject_reason;byId('memo').value=r.memo;
   byId('recordInfo').textContent=r.updated_at?`このWAVの最終記録: ${r.updated_at}／人手判定は自動で原本や正式ライブラリに適用されません。`:'このWAVはまだ手動レビューされていません。';
  }else{byId('manualCategory').value='';byId('identity').value='unverified';byId('quality').value='unverified';byId('rejectReason').value='';byId('memo').value='';byId('recordInfo').textContent='該当する候補がありません。';}
@@ -138,7 +141,7 @@ function render(){const counts=countDecisions();byId('total').textContent=state.
 function move(delta){if(!state.order.length)return;state.position=(state.position+delta+state.order.length)%state.order.length;render();}
 function nextUnreviewed(){if(!state.order.length)return;const curr=state.position;for(let j=1;j<=state.order.length;j++){const idx=(curr+j)%state.order.length;if(!editOf(state.order[idx].source_id).decision){state.position=idx;render();return;}}move(1);tell('この表示範囲のWAVはすべて判定済みです。');}
 function store(change,autoNext=false){const item=selectedFile();if(!item)return;const prev=editOf(item.source_id);const r={...prev,...change,updated_at:changedAt()};
- if(!r.decision&&!r.manual_category&&r.identity==='unverified'&&r.quality==='unverified'&&!r.reject_reason&&!r.memo)state.review.delete(item.source_id);else state.review.set(item.source_id,r);
+ if(!r.decision&&!r.manual_category&&r.identity==='unverified'&&r.quality==='unverified'&&!r.reject_reason&&!r.memo&&!state.priorIds.has(item.source_id))state.review.delete(item.source_id);else state.review.set(item.source_id,r);
  state.dirty=true;const key=item.source_id;const oldIndex=state.position;filterList(key);
  if(autoNext&&byId('autoAdvance').checked){if(state.order.length===0){tell('この表示範囲の未判定レビューが終わりました。');return;}if(!state.order.some(x=>!editOf(x.source_id).decision)){tell('この表示範囲のWAVはすべて判定済みです。');return;}
   if(state.order.some(x=>x.source_id===key))nextUnreviewed();else{state.position=Math.min(oldIndex,Math.max(0,state.order.length-1));if(editOf(state.order[state.position].source_id).decision)nextUnreviewed();else render();}}
