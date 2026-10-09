@@ -8,6 +8,16 @@
 
 **Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**ASR12音声Pilotは `feature/phase3-asr-pilot` で実装済み、Kotoba/Whisperとも実CUDAで12/12処理済み**（モデル正式採用・48件比較は後続保留）。[ASR手順](docs/ASR_PILOT_RUNBOOK.md) を参照。**LV-R04音響分類Pilotは `feature/phase4-acoustic-pilot` に追加済みだが、実モデルのCUDA動作・分類品質は未検証。** [AST/CLAP音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)。最優先の成果物は既存1,167件からの日本語カテゴリ別参照WAVライブラリv1で、音響分類・QC・レビュー・出力はまだ未完成。
 
+## ASTの一括カテゴリ整理（暫定ライブラリ）
+
+既存 `data/training_audio/Ui_Shigure/audio/` のWAV 1,167件を対象に、**ASTだけ**で分類可能な音声を日本語カテゴリ別フォルダへ**未確認候補として**コピーする実装を追加しました。
+
+- [Windows 1,167件一括処理・中断再開・フォルダ出力](docs/AST_BATCH_RUNBOOK.md)
+- CLI：`python -m localvoice style-batch inventory|run|summary|export`
+- 中断後の `run --resume`、コピー中断後の `export --resume-export`、元WAVのSHA検証、未分類/失敗の保全に対応
+- 暫定出力：`outputs/candidates/Ui_Shigure/v1/audio/<日本語カテゴリ>/`（**未確認**、正式承認済みの `outputs/datasets/` とは別）
+- 現時点で**Windows/GPUでの実バッチ処理は未確認**。機械分類結果は人手承認/本人確認/音質保証ではありません。
+
 ## Pipeline
 
 ```text
