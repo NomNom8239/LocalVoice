@@ -6,7 +6,7 @@
 
 **必読： [ディレクトリ責務・追加ルール](docs/PROJECT_LAYOUT.md)** — `data/` 保全、公式Irodoriへの独自ファイル追加禁止、新規コード・一時出力・成果物の保存先を定義しています。下記のパイプラインとパス説明は、既存の取得・RVC処理についての説明です。
 
-**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**12音声Pilotの実装は `feature/phase3-asr-pilot` にあり、実機GPU未検証です。** [Windows Pilot実行手順](docs/ASR_PILOT_RUNBOOK.md) を参照。全件ASRの実装やモデル採用はまだ行っていません。
+**Phase 3日本語ASRの設計：** [PHASE3_JAPANESE_ASR.md](docs/PHASE3_JAPANESE_ASR.md)。Irodori公式の Text / Caption / Reference の境界に準拠し、ASR・Emoji分類・最終フォルダ書き出しを別Phaseとして扱います。**ASR12音声Pilotは `feature/phase3-asr-pilot` で実装済み、Kotoba/Whisperとも実CUDAで12/12処理済み**（モデル正式採用・48件比較は後続保留）。[ASR手順](docs/ASR_PILOT_RUNBOOK.md) を参照。**LV-R04音響分類Pilotは `feature/phase4-acoustic-pilot` に追加済みだが、実モデルのCUDA動作・分類品質は未検証。** [AST/CLAP音響Pilot手順](docs/STYLE_PILOT_RUNBOOK.md)。最優先の成果物は既存1,167件からの日本語カテゴリ別参照WAVライブラリv1で、音響分類・QC・レビュー・出力はまだ未完成。
 
 ## Pipeline
 
