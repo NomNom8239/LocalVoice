@@ -504,9 +504,8 @@ def resume_bootstrap(
     config: dict, profile: str, output_dir: Path,
     vocals_override: str | None, accept_threshold: float,
     review_threshold: float, top_k: int,
-    classify_after_bootstrap: bool = False,
 ) -> None:
-    """Reuse existing previews; expensive diarization requires explicit opt-in."""
+    """Continue an interrupted first-run approval; never rerun download/separator."""
     ref_root = reference_dir(config, profile)
     if (ref_root / "self_reference_bank.npz").exists() or (
         ref_root / "self_reference_bank.json"
@@ -520,35 +519,15 @@ def resume_bootstrap(
         destination = output_dir / dirname
         if destination.exists() and any(destination.iterdir()):
             raise RuntimeError(f"Run already has classification WAVs: {destination}")
-
     previews = existing_bootstrap_previews(output_dir)
-    # Check prerequisites before creating a Bank when the operator explicitly
-    # requests classification. Bank-only resume does not even need source Vocals.
-    vocals = None
-    if classify_after_bootstrap:
-        vocals = (
-            project_path(vocals_override)
-            if vocals_override
-            else find_bootstrap_vocals(output_dir)
-        )
-        if not vocals.is_file():
-            raise FileNotFoundError(vocals)
-
+    vocals = project_path(vocals_override) if vocals_override else find_bootstrap_vocals(output_dir)
+    if not vocals.is_file():
+        raise FileNotFoundError(vocals)
     print("Resuming bootstrap from existing previews WITHOUT re-download/separation.")
     print("Only the approved preview clips will be used to create the reference.")
     build_approved_bootstrap_bank(config, profile, output_dir, previews)
-    if not classify_after_bootstrap:
-        print(
-            "Reference Bank created. STOPPED before full-archive diarization. "
-            "No further sampling, speaker separation, or classification was run."
-        )
-        return
-
-    print(
-        "Explicit full-archive classification requested. "
-        "Running pyannote diarization again; this may take hours."
-    )
-    assert vocals is not None
+    # Previous run stopped before producing a Bank. Precomputed turns were
+    # not persisted, so the ordinary classification needs one diarization pass.
     classify(
         config, profile, vocals, output_dir,
         accept_threshold, review_threshold, top_k,
@@ -782,11 +761,6 @@ def main() -> None:
     source.add_argument("--vocals")
     source.add_argument("--resume-bootstrap", metavar="RUN_NAME")
     parser.add_argument("--resume-vocals", help="Original Vocals WAV when resuming a --vocals input run")
-    parser.add_argument(
-        "--classify-after-bootstrap",
-        action="store_true",
-        help="Explicitly rerun full-archive pyannote/classification after bootstrap; can take hours",
-    )
 
     parser.add_argument("--run-name")
     parser.add_argument("--force", action="store_true")
@@ -836,21 +810,14 @@ def main() -> None:
         if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", args.resume_bootstrap):
             raise ValueError("Unsafe --resume-bootstrap run name")
         output_dir = run_dir(config, args.profile) / args.resume_bootstrap
-        if args.resume_vocals and not args.classify_after_bootstrap:
-            raise ValueError(
-                "--resume-vocals is only needed with --classify-after-bootstrap"
-            )
         resume_bootstrap(
             config, args.profile, output_dir, args.resume_vocals,
             accept_threshold, review_threshold, top_k,
-            classify_after_bootstrap=args.classify_after_bootstrap,
         )
         return
 
-    if args.resume_vocals or args.classify_after_bootstrap:
-        raise ValueError(
-            "--resume-vocals and --classify-after-bootstrap require --resume-bootstrap"
-        )
+    if args.resume_vocals:
+        raise ValueError("--resume-vocals requires --resume-bootstrap")
 
     if args.url:
         job_id = youtube_id(args.url)

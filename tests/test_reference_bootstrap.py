@@ -284,43 +284,10 @@ def test_preview_only_reference_generation_does_not_promote_unreviewed_turns(
     )
 
 
-def test_resume_bootstrap_uses_previews_only_no_full_archive_or_vocals(
+def test_resume_bootstrap_uses_existing_previews_and_vocals_without_separator(
     tmp_path, monkeypatch,
 ):
     output = tmp_path / "runs" / "Fresh" / "previous_run"
-    preview_root = output / "bootstrap" / "previews"
-    preview_root.mkdir(parents=True)
-    for i in (1, 2, 3):
-        (preview_root / f"SPEAKER_00_{i:02d}.wav").touch()
-    ref = tmp_path / "ref"
-    monkeypatch.setattr(module, "reference_dir", lambda *_: ref)
-    seen = []
-    monkeypatch.setattr(
-        module, "build_approved_bootstrap_bank",
-        lambda _config, _profile, _output, preview: seen.append(("bank", preview)),
-    )
-    monkeypatch.setattr(
-        module, "find_bootstrap_vocals",
-        lambda *_: pytest.fail("Bank-only resume must not read full Vocals"),
-    )
-    monkeypatch.setattr(
-        module, "classify",
-        lambda *_args, **_kwargs: pytest.fail("Bank-only resume must not classify"),
-    )
-    monkeypatch.setattr(
-        module, "diarize_turns",
-        lambda *_: pytest.fail("Bank-only resume must not rerun pyannote"),
-    )
-    module.resume_bootstrap({}, "Fresh", output, None, 0.7, 0.4, 3)
-    assert len(seen) == 1
-    assert seen[0][0] == "bank"
-    assert len(seen[0][1]["SPEAKER_00"]) == 3
-
-
-def test_resume_full_archive_classification_requires_explicit_opt_in(
-    tmp_path, monkeypatch,
-):
-    output = tmp_path / "run"
     preview_root = output / "bootstrap" / "previews"
     preview_root.mkdir(parents=True)
     for i in (1, 2, 3):
@@ -329,7 +296,8 @@ def test_resume_full_archive_classification_requires_explicit_opt_in(
     separated.mkdir()
     vocals = separated / "audio_Vocals.wav"
     vocals.touch()
-    monkeypatch.setattr(module, "reference_dir", lambda *_: tmp_path / "ref")
+    ref = tmp_path / "ref"
+    monkeypatch.setattr(module, "reference_dir", lambda *_: ref)
     seen = []
     monkeypatch.setattr(
         module, "build_approved_bootstrap_bank",
@@ -337,36 +305,12 @@ def test_resume_full_archive_classification_requires_explicit_opt_in(
     )
     monkeypatch.setattr(
         module, "classify",
-        lambda _config, _profile, source, _output, *_args: seen.append(
-            ("classify", source)
-        ),
+        lambda _config, _profile, source, _output, *_: seen.append(("classify", source)),
     )
-    module.resume_bootstrap(
-        {}, "Fresh", output, None, 0.7, 0.4, 3,
-        classify_after_bootstrap=True,
-    )
+    module.resume_bootstrap({}, "Fresh", output, None, 0.7, 0.4, 3)
     assert [entry[0] for entry in seen] == ["bank", "classify"]
+    assert len(seen[0][1]["SPEAKER_00"]) == 3
     assert seen[1][1] == vocals
-
-
-def test_resume_explicit_classification_requires_vocals_before_bank(
-    tmp_path, monkeypatch,
-):
-    output = tmp_path / "run"
-    previews = output / "bootstrap" / "previews"
-    previews.mkdir(parents=True)
-    for i in (1, 2, 3):
-        (previews / f"SPEAKER_00_{i:02d}.wav").touch()
-    monkeypatch.setattr(module, "reference_dir", lambda *_: tmp_path / "ref")
-    monkeypatch.setattr(
-        module, "build_approved_bootstrap_bank",
-        lambda *_: pytest.fail("No Bank should be created when source is missing"),
-    )
-    with pytest.raises(RuntimeError, match="Expected exactly one separated Vocals"):
-        module.resume_bootstrap(
-            {}, "Fresh", output, None, 0.7, 0.4, 3,
-            classify_after_bootstrap=True,
-        )
 
 
 def test_resume_refuses_previous_classification_without_touching_it(tmp_path, monkeypatch):
