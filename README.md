@@ -29,6 +29,20 @@ SHA照合付きで取り込み、**v1を変更せず**カテゴリ修正版 `out
 - CSVに無いWAVも消さず、既存AST分類で保持。正式な `outputs/datasets/` への自動昇格はしない
 - CSVと原本候補を照合できない場合は実行を中断。途中コピーは同じCSVの `--resume-export` で再開
 
+## 分類・レビュー履歴のCSV/JSONバージョン管理
+
+過去のカテゴリを保つために1,167件のWAVを毎回コピーする必要はありません。
+`python -m localvoice style-batch metadata {archive|revise|verify|materialize}`
+を追加し、既存のv1/v2を**メタデータのみの履歴**として退避できます。
+新しいレビューCSVを適用したv3以降は、CSV・JSON・manifestだけを作成し、
+WAVフォルダはエクスプローラーで閲覧したい版に限って明示的に生成します。
+
+- [運用とWindows移行手順](docs/VERSIONED_AUDIO_METADATA.md)
+- `outputs/metadata/Ui_Shigure/inbox/` — Chrome/Edgeから保存したCSV・JSONの置き場所
+- `outputs/metadata/Ui_Shigure/versions/v1,v2,v3/.../` — SHA付き不変分類・レビュー履歴
+- 元音声 `data/training_audio/Ui_Shigure/audio/` はread-only。旧 `outputs/candidates/Ui_Shigure/v1,v2/` は**自動削除しません**
+- 過去の音声フォルダは `metadata materialize` で明示的に再生成。正式承認済み `outputs/datasets/` とは別
+
 ## Pipeline
 
 ```text
