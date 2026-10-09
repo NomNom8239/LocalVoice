@@ -308,8 +308,78 @@ RVC-WebUI には `self/` を dataset path として渡します。
 - RVC dataset の ACCEPT は機械的 QC 通過を意味し、話者・分離品質の最終確認を代替しない。
 - 他人の声を学習・変換する場合は、利用許諾のある音声だけを使用する。
 
+
+## Irodori-TTS LoRA dataset preparation
+
+Use the repository-owned, read-only dataset workflow instead of unpacking separate ZIP tools. See [docs/irodori_dataset.md](docs/irodori_dataset.md). Existing review data is reused; ASR runs in a separate environment.
+
+## Scripts and LV-03 diagnostic (no Codex)
+
+Executable scripts are centralized under [scripts/](scripts/README.md).
+Do not create a parallel top-level scripts location or move existing
+Irodori/RVC entrypoints without updating the dispatcher and tests.
+
+To run the standalone LV-03 recovery after pulling the work branch:
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv03_no_codex.py
+~~~
+
+This uses existing local Irodori dependencies and writes only fresh attempt folders.
+See [scripts/README.md](scripts/README.md) for grouping, diagnostics and outputs.
+## LV-04 official LoRA baseline (Codex-free)
+
+After LV-03's DACVAE result is confirmed, see the [script catalog](scripts/README.md)
+for a one-command preflight and an explicit official training run.
+
+~~~powershell
+git pull --ff-only origin feature/irodori-lora-dataset-cli
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py
+# After preflight PASS, opt in to local training:
+.\.venv\Scripts\python.exe .\scripts\lv04_no_codex.py --run
+~~~
+
+This only uses the eight LV-02 approved training sources (7 training / 1
+internal validation); the three independent evaluations remain held out.
+The official trainer runs in Irodori-TTS/.venv and saves outputs into a fresh
+lv04_lora_NNN directory. A non-explicit inference smoke test follows a
+successful adapter build. This is *not* a claim of voice quality or suitability
+for any particular vocal style, which requires later evaluation.
+
 ## Git policy
 
 Git にはコードと設定だけを保存します。音声・モデル・キャッシュ・学習成果物はローカル管理です。
 
 GitHub Actions は使用せず、検証はローカル環境で行います。
+
+## Single-command expressive LoRA from existing WAV files
+
+Use only voice data you own or have permission to process. Input is the existing
+LocalVoice/data/training_audio/Ui_Shigure/audio directory and existing LV-02 tables.
+
+Run from the LocalVoice root after git pull:
+
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\irodori_train_direct.py --run
+~~~
+
+The run automatically reuses curated training voice data (up to 320 additional
+normal clips, distributed by source video), frozen original 8 clips, and existing
+human-labelled tokenizer-checked nonverbal breath/groan pilot data. The independent
+3 evaluation examples and their source video stay excluded from training.
+Auto-generated ASR text is provisional, not independently verified.
+
+One fresh direct_lora_NNN output directory holds the checked source CSV,
+official DACVAE manifest, weighted experimental nonverbal manifest,
+LoRA adapter, training logs, result.json, and matched Base vs LoRA WAVs
+for normal Japanese speech plus the present breath/groan classes.
+
+The official Irodori training is configured with duration_predictor frozen;
+when nonverbal latents are repeated, potentially leaking internal random
+validation is disabled. This is a technical trial, not proof of similarity
+or NSFW quality. It does not support absent classes without real labeled data.
+No Codex, new downloads, full ASR rerun, or 48-item review loop is required.
+
+LocalVoice .venv drives the workflow; Irodori-TTS/.venv runs official
+prepare_manifest.py, train.py, and infer.py. Existing artifacts are not overwritten.

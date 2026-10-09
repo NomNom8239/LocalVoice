@@ -1,5 +1,6 @@
 # Python
 .venv/
+.venv-asr/
 venv/
 __pycache__/
 *.py[cod]
@@ -19,6 +20,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# External model/tool checkouts (not vendored)
+Irodori-TTS/
 
 # LocalVoice generated data
 data/

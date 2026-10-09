@@ -1,0 +1,63 @@
+diff --git a/gradio_app_voicedesign.py b/gradio_app_voicedesign.py
+--- a/gradio_app_voicedesign.py
++++ b/gradio_app_voicedesign.py
+@@ -25,6 +25,28 @@
+ GRADIO_AUDIO_COLS_PER_ROW = 8
+ 
+ 
++# LOCALVOICE_CAPTION_PRESETS_BEGIN
++CAPTION_PRESET_ITEMS: tuple[tuple[str, str], ...] = (
++    ("01｜消耗と微かな反抗", "心身ともに疲弊し、声には生気がほとんど残っていない。言葉は弱々しく途切れ、浅い呼吸が混じる。諦めに沈みかけながらも、自尊心が刺激された瞬間だけ声が鋭く冷たくなる。反抗の直後には再び力が抜け、かすれた小声へ戻っていく。"),
++    ("02｜諦めと虚脱", "長い緊張によって心身が消耗し、感情を表現する力さえ失いかけている。声は低く、かすれ、ひどく弱々しい。語尾は自然に消え入り、返答までに長い間が空く。ときおり乾いた皮肉を口にするが、それすら最後まで言い切る力がない。"),
++    ("03｜屈辱と反抗心", "屈辱と疲労で声が震え、平静を装おうとしても呼吸が乱れる。普段は力なく途切れがちな口調だが、反抗心が湧き上がる瞬間だけ鋭く吐き捨てるように話す。怒りを維持する余力はなく、言い終わると再び弱々しい息遣いに戻る。"),
++    ("04｜感情の崩壊", "極度の疲労で感情の制御が不安定になり、言葉と思考がうまく結びつかない。声は細く、ところどころ震え、短い言葉を絞り出すように話す。怒り、悲しみ、諦めが不規則に表れ、声の高さや強さが突然変化する。感情が高ぶっても、大声を出す体力は残っていない。"),
++    ("05｜虚勢と脆さ", "疲弊しきっているにもかかわらず、最後の自尊心を守ろうとしている。声はかすれ、息が続かず、言葉を区切りながら話す。強がる場面では意図的に冷たい声を作るが、語尾には隠しきれない震えが残る。虚勢が崩れると、急に声が小さくなり、言葉を失う。"),
++    ("06｜陶然と混乱", "意識がぼんやりと霞み、思考がまとまらない。声は柔らかくかすれ、浅い呼吸と長い沈黙が混じる。感情の輪郭が曖昧で、時折場違いな笑いや戸惑いが漏れる。ふと我に返った瞬間だけ声が硬く鋭くなり、その後は再び夢うつつのような話し方へ戻る。"),
++    ("07｜静かな絶望と冷笑", "すべてを諦めたような、感情の起伏が少ない女性の声。抑揚は乏しく、低く乾いた声で淡々と話す。呼吸は浅く、発話速度は遅い。しかし皮肉や拒絶の言葉だけは異様なほど明瞭で、短く冷たい響きを持つ。笑い声にも温かさがなく、すぐに沈黙へ戻る。"),
++    ("08｜限界寸前の緊張と震え", "心身が限界に近づき、声を安定させることが難しくなっている。息を詰めるような短い発話が続き、語尾には細かな震えが混じる。感情を抑えようとして不自然な間が生まれ、ときおり抑えきれない怒りが鋭い声となって漏れる。声量は終始小さく、張り上げようとしても声がかすれる。"),
++)
++CAPTION_PRESETS = dict(CAPTION_PRESET_ITEMS)
++
++
++def _select_caption_preset(selection: str | None, current_caption: str | None) -> str:
++    """Fill Caption on preset change; keep manual edits when selection is cleared."""
++    if not selection:
++        return current_caption or ""
++    return CAPTION_PRESETS[selection]
++# LOCALVOICE_CAPTION_PRESETS_END
++
++
+ def _default_checkpoint() -> str:
+     candidates = sorted(
+         [
+@@ -471,6 +493,15 @@
+                 elem_id="irodori-voicedesign-text-input",
+             )
+             build_emoji_palette(text, open=False)
++        # LOCALVOICE_CAPTION_PRESET_DROPDOWN_BEGIN
++        caption_preset = gr.Dropdown(
++            label="Caption テンプレート",
++            choices=[label for label, _ in CAPTION_PRESET_ITEMS],
++            value=None,
++            interactive=True,
++            info="選択するとCaption欄へ全文を入力します。入力後は自由に編集できます。",
++        )
++        # LOCALVOICE_CAPTION_PRESET_DROPDOWN_END
+         caption = gr.Textbox(
+             label="Caption / Style Prompt (optional)",
+             lines=4,
+@@ -601,6 +632,14 @@
+         out_log = gr.Textbox(label="Run Log", lines=8)
+         out_timing = gr.Textbox(label="Timing", lines=8)
+ 
++        # LOCALVOICE_CAPTION_PRESET_EVENT_BEGIN
++        caption_preset.change(
++            _select_caption_preset,
++            inputs=[caption_preset, caption],
++            outputs=[caption],
++            queue=False,
++        )
++        # LOCALVOICE_CAPTION_PRESET_EVENT_END
+         generate_btn.click(
+             _run_generation,
+             inputs=[
