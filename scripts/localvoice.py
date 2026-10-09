@@ -249,7 +249,6 @@ def merge_diarization_turns(
 
 BOOTSTRAP_MIN_DURATION = 2.0
 BOOTSTRAP_MAX_DURATION = 20.0
-BOOTSTRAP_MAX_REFERENCE_CLIPS = 24
 BOOTSTRAP_PREVIEWS_PER_SPEAKER = 3
 BOOTSTRAP_MAX_CLIPPING_RATIO = 0.005
 
@@ -343,51 +342,196 @@ def choose_bootstrap_speakers(
     candidates: dict[str, list[tuple[float, float, str]]],
     previews: dict[str, list[Path]],
 ) -> list[str]:
-    """Human identifies which pyannote labels belong to the target person."""
+    """Human approves exactly which preview WAVs may become references.
+
+    A speaker label selects ONLY its previewed WAVs, never the unseen turns.
+    An individual preview stem (e.g. SPEAKER_02_03) selects one clip.
+    """
     if not sys.stdin.isatty():
         raise RuntimeError(
             "New-speaker bootstrap requires an interactive terminal. "
             "Preview WAVs are under the run's bootstrap/previews directory. "
-            "Run this command interactively with a new --run-name; "
-            "no Reference Bank was created."
+            "Run --resume-bootstrap <run-name> to continue without redownloading."
         )
-    labels = set(candidates)
-    print("\nReference Bank bootstrap: identify the TARGET speaker.")
-    print("Pyannote labels are anonymous; the same person may have multiple labels.")
-    print("Type 'p SPEAKER_00' to play previews, or comma-separated labels to select.")
-    print("If no label is reliably the target, type q. Other labels are NOT negatives.")
+    labels = set(previews)
+    clip_ids = {
+        path.stem: path
+        for paths in previews.values()
+        for path in paths
+    }
+    print("\nReference Bank bootstrap: select ONLY verified TARGET clips.")
+    print("The same person may appear in several SPEAKER labels.")
+    print("p SPEAKER_00: play 3 previews; p SPEAKER_02_03: play one preview.")
+    print("SPEAKER_00: approve ONLY its displayed previews, not unseen clips.")
+    print("SPEAKER_02_02,SPEAKER_02_03: approve only those exact clips.")
+    print("Never approve silence, another person, or overlapped voices.")
+    print("Other speaker labels are NOT automatic negative samples.")
     while True:
-        raw = input("Target speaker label(s) [p <label> / labels / q]: ").strip()
+        raw = input("Confirmed labels/clip IDs [p <ID> / IDs / q]: ").strip()
         if raw.lower() in {"q", "quit"}:
             raise RuntimeError("Bootstrap canceled: no Reference Bank was created.")
         if raw.lower().startswith("p "):
-            label = raw[2:].strip()
-            if label not in previews:
-                print("Unknown label:", label)
+            key = raw[2:].strip()
+            if key in previews:
+                paths = previews[key]
+            elif key in clip_ids:
+                paths = [clip_ids[key]]
+            else:
+                print("Unknown label or preview clip ID:", key)
                 continue
             if shutil.which("ffplay") is None:
-                print("ffplay is unavailable; open these WAV files manually:")
-                for wav in previews[label]:
+                print("ffplay unavailable; open these WAV files manually:")
+                for wav in paths:
                     print(" ", wav)
             else:
-                for wav in previews[label]:
+                for wav in paths:
                     try:
                         run(["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(wav)])
                     except subprocess.CalledProcessError:
-                        print(f"ffplay stopped for {wav}; choose another preview or speaker.")
+                        print(f"ffplay stopped for {wav}; review its WAV manually.")
             continue
+
         selected = list(dict.fromkeys(v.strip() for v in raw.split(",") if v.strip()))
-        if not selected or any(label not in labels for label in selected):
-            print("Select one or more displayed labels, or q to cancel.")
+        if not selected or any(x not in labels and x not in clip_ids for x in selected):
+            print("Select displayed speaker labels or exact preview clip IDs, or q.")
             continue
-        if sum(len(candidates[label]) for label in selected) < 3:
-            print("Fewer than three eligible reference clips; select another archive.")
+        approved = resolve_bootstrap_preview_selection(selected, previews)
+        if len(approved) < 3:
+            print("At least three confirmed reference WAVs are required.")
             continue
-        print("Target labels:", ", ".join(selected))
-        print("Only select multiple labels if you heard the SAME person in each.")
-        if input("Confirm these are the target person's voice [type YES]: ").strip() == "YES":
+        print("Will include EXACTLY these reviewed previews:")
+        for wav in approved:
+            print(" ", wav)
+        print(f"Approved previews: {len(approved)}. Unreviewed turns: NEVER included.")
+        if input("Confirm EVERY listed WAV contains only the target [type YES]: ").strip() == "YES":
             return selected
-        print("Not confirmed. Review the previews or cancel.")
+        print("Not confirmed. Review previews or q to stop.")
+
+
+def resolve_bootstrap_preview_selection(
+    selections: list[str], previews: dict[str, list[Path]],
+) -> list[Path]:
+    """Resolve speaker/individual IDs to the exact preview WAVs, nothing else."""
+    clip_map = {p.stem: p for paths in previews.values() for p in paths}
+    chosen: list[Path] = []
+    seen: set[Path] = set()
+    for selection in selections:
+        if selection in previews:
+            paths = previews[selection]
+        elif selection in clip_map:
+            paths = [clip_map[selection]]
+        else:
+            raise ValueError(f"Unknown preview selection: {selection}")
+        for path in paths:
+            if path in seen:
+                continue
+            if not path.is_file():
+                raise FileNotFoundError(path)
+            seen.add(path)
+            chosen.append(path)
+    return chosen
+
+
+def build_approved_bootstrap_bank(
+    config: dict, profile: str, output_dir: Path,
+    previews: dict[str, list[Path]],
+) -> None:
+    """Create reference only from exact approved preview files."""
+    ref_root = reference_dir(config, profile)
+    bank_path = ref_root / "self_reference_bank.npz"
+    report_path = ref_root / "self_reference_bank.json"
+    if bank_path.exists() or report_path.exists():
+        raise RuntimeError(
+            f"Reference Bank already exists or is incomplete: {ref_root}. "
+            "Refusing to overwrite."
+        )
+    selected = choose_bootstrap_speakers({}, previews)
+    approved = resolve_bootstrap_preview_selection(selected, previews)
+    if len(approved) < 3:
+        raise RuntimeError("At least three confirmed preview clips are required.")
+    stage = output_dir / "bootstrap" / "selected_reference_wavs"
+    if stage.exists():
+        raise RuntimeError(f"Reference staging folder already exists: {stage}")
+    stage.mkdir(parents=True)
+    for index, source in enumerate(approved, 1):
+        shutil.copy2(source, stage / f"ref_{index:03d}.wav")
+
+    print(f"Approved {len(approved)} reviewed preview clips; no unseen WAVs added.")
+    if bank_path.exists() or report_path.exists():
+        raise RuntimeError("Reference Bank appeared concurrently; refusing overwrite.")
+    run([
+        sys.executable, str(Path(__file__).with_name("build_reference_bank.py")),
+        "--profile", profile, "--source", str(stage),
+    ])
+    if not bank_path.is_file() or not report_path.is_file():
+        raise RuntimeError("Reference Bank subprocess ended without complete output.")
+    print("Reference Bank created. Inspect 'Lowest similarity clips' for mistakes.")
+    print("Thresholds use config.toml defaults until verified negatives are provided.")
+
+
+def existing_bootstrap_previews(output_dir: Path) -> dict[str, list[Path]]:
+    """Read ONLY preview files previously generated in the selected run."""
+    root = output_dir / "bootstrap" / "previews"
+    if not root.is_dir():
+        raise FileNotFoundError(f"No bootstrap preview directory: {root}")
+    previews: dict[str, list[Path]] = {}
+    for wav in sorted(root.glob("*.wav")):
+        match = re.fullmatch(r"(SPEAKER_[0-9]+)_[0-9]{2}\.wav", wav.name)
+        if not match or not wav.is_file():
+            raise RuntimeError(f"Unexpected preview WAV: {wav}")
+        previews.setdefault(match.group(1), []).append(wav)
+    if not previews:
+        raise RuntimeError("No preview WAVs to resume.")
+    return previews
+
+
+def find_bootstrap_vocals(output_dir: Path) -> Path:
+    """Locate the vocals produced by the initial archive/separator run."""
+    root = output_dir / "separated"
+    candidates = sorted(
+        p for p in root.rglob("*.wav")
+        if p.is_file() and "vocal" in p.name.lower()
+    )
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Expected exactly one separated Vocals WAV in {root}, "
+            f"found {len(candidates)}. Supply --resume-vocals if needed."
+        )
+    return candidates[0]
+
+
+def resume_bootstrap(
+    config: dict, profile: str, output_dir: Path,
+    vocals_override: str | None, accept_threshold: float,
+    review_threshold: float, top_k: int,
+) -> None:
+    """Continue an interrupted first-run approval; never rerun download/separator."""
+    ref_root = reference_dir(config, profile)
+    if (ref_root / "self_reference_bank.npz").exists() or (
+        ref_root / "self_reference_bank.json"
+    ).exists():
+        raise RuntimeError(f"Reference Bank exists: {ref_root}. Refusing resume.")
+    if not output_dir.is_dir():
+        raise FileNotFoundError(output_dir)
+    if (output_dir / "classification.tsv").exists():
+        raise RuntimeError("Run already classified; refusing to overwrite results.")
+    for dirname in ("my_voice", "review", "rejected", "review_unscored"):
+        destination = output_dir / dirname
+        if destination.exists() and any(destination.iterdir()):
+            raise RuntimeError(f"Run already has classification WAVs: {destination}")
+    previews = existing_bootstrap_previews(output_dir)
+    vocals = project_path(vocals_override) if vocals_override else find_bootstrap_vocals(output_dir)
+    if not vocals.is_file():
+        raise FileNotFoundError(vocals)
+    print("Resuming bootstrap from existing previews WITHOUT re-download/separation.")
+    print("Only the approved preview clips will be used to create the reference.")
+    build_approved_bootstrap_bank(config, profile, output_dir, previews)
+    # Previous run stopped before producing a Bank. Precomputed turns were
+    # not persisted, so the ordinary classification needs one diarization pass.
+    classify(
+        config, profile, vocals, output_dir,
+        accept_threshold, review_threshold, top_k,
+    )
 
 
 def bootstrap_reference_bank(
@@ -424,30 +568,7 @@ def bootstrap_reference_bank(
             print("  preview:", path)
         previews[speaker] = wavs
 
-    selected = choose_bootstrap_speakers(candidates, previews)
-    pool = sorted(
-        [turn for label in selected for turn in candidates[label]]
-    )
-    chosen = spaced_samples(pool, BOOTSTRAP_MAX_REFERENCE_CLIPS)
-    if len(chosen) < 3:
-        raise RuntimeError("Not enough eligible reference WAVs to build the bank.")
-    stage = output_dir / "bootstrap" / "selected_reference_wavs"
-    for index, turn in enumerate(chosen, 1):
-        write_bootstrap_clip(
-            audio, sample_rate, turn, stage / f"ref_{index:03d}.wav"
-        )
-    print(f"Selected {len(chosen)} reference WAVs in {stage}.")
-    print("These are PROVISIONAL references, not a guarantee of speaker identity.")
-    if bank_path.exists() or report_path.exists():
-        raise RuntimeError("Concurrent or incomplete Reference Bank detected; refusing overwrite.")
-    run([
-        sys.executable, str(Path(__file__).with_name("build_reference_bank.py")),
-        "--profile", profile, "--source", str(stage),
-    ])
-    if not bank_path.is_file() or not report_path.is_file():
-        raise RuntimeError("Reference Bank subprocess ended without complete output.")
-    print("Reference Bank created. Inspect 'Lowest similarity clips' for mistakes.")
-    print("Thresholds use config.toml defaults until verified negatives are provided.")
+    build_approved_bootstrap_bank(config, profile, output_dir, previews)
     return turns
 
 
@@ -638,6 +759,8 @@ def main() -> None:
     source.add_argument("--url")
     source.add_argument("--wav")
     source.add_argument("--vocals")
+    source.add_argument("--resume-bootstrap", metavar="RUN_NAME")
+    parser.add_argument("--resume-vocals", help="Original Vocals WAV when resuming a --vocals input run")
 
     parser.add_argument("--run-name")
     parser.add_argument("--force", action="store_true")
@@ -680,6 +803,21 @@ def main() -> None:
         )
     if top_k < 1:
         raise ValueError("--top-k must be >= 1")
+
+    if args.resume_bootstrap:
+        if args.force or args.run_name:
+            raise ValueError("--resume-bootstrap cannot use --force or --run-name")
+        if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", args.resume_bootstrap):
+            raise ValueError("Unsafe --resume-bootstrap run name")
+        output_dir = run_dir(config, args.profile) / args.resume_bootstrap
+        resume_bootstrap(
+            config, args.profile, output_dir, args.resume_vocals,
+            accept_threshold, review_threshold, top_k,
+        )
+        return
+
+    if args.resume_vocals:
+        raise ValueError("--resume-vocals requires --resume-bootstrap")
 
     if args.url:
         job_id = youtube_id(args.url)
