@@ -29,7 +29,7 @@ Only create populated categories; do not create 40+ empty folders to mirror ever
 
 ## Ownership by phase
 
-- **Phase 3 / transcription:** Identify whether a segment has intelligible Japanese words; output timestamps, text when supported, `speech | non_speech | uncertain` evidence and failure reasons. ASR must not call a clip `喘ぎ`, `笑い`, etc. based on text alone. Its non-speech marker is not a final style label.
+- **Phase 3 / transcription:** Follow [Phase 3 Japanese ASR contract](PHASE3_JAPANESE_ASR.md). Identify whether a segment has intelligible Japanese words; output timestamps, text when supported, `speech_candidate | non_speech_candidate | uncertain | error` evidence and failure reasons. ASR must not call a clip `喘ぎ`, `笑い`, etc. based on text alone. Its non-speech marker is not a final style label.
 - **Phase 4 / style:** Assess acoustic events and delivery independently of transcript text, using the defined categories and optional secondary tags. Require human review for uncertainty and cases where multiple categories plausibly apply. Distinguish `exhale`, `pant`, `gasp` and `moan`; do not collapse all breath sounds.
 - **Phase 5 / export:** After identity approval, audio QC and human approval, **copy** clean, relevant audio segments to a versioned directory named for the selected primary class. One canonical copy per segment. Other confirmed categories are recorded in metadata; do not duplicate audio across folders by default.
 
