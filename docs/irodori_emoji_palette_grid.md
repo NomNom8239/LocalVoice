@@ -48,14 +48,13 @@ def git(*args, input=None, check=True):
     return subprocess.run(["git", *args], input=input, capture_output=True, check=check)
 
 target = "irodori_tts/gradio_emoji_palette.py"
-dirty = git("-C", "Irodori-TTS", "status", "--porcelain", "--", target).stdout
-if dirty:
-    raise SystemExit("Palette has local modifications. Inspect before applying; nothing changed.")
 patch = git("show", "origin/feature/phase4-acoustic-pilot:patches/irodori/gradio_emoji_palette-labelled-grid.patch").stdout
 def probe(*args):
     return git("-C", "Irodori-TTS", "apply", *args, "-", input=patch, check=False)
 if probe("--reverse", "--check").returncode == 0:
     print("Emoji palette overlay is already applied.")
+elif git("-C", "Irodori-TTS", "status", "--porcelain", "--", target).stdout:
+    raise SystemExit("Palette has local modifications. Inspect before applying; nothing changed.")
 elif probe("--check").returncode == 0:
     git("-C", "Irodori-TTS", "apply", "-", input=patch)
     print("Emoji palette overlay applied.")
