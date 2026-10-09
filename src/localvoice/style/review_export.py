@@ -165,7 +165,7 @@ def apply_review(run_id: str, csv_path: Path, source_version: str = 'v1',
                  version: str = 'v2', dry_run: bool = False, resume_export: bool = False) -> dict[str, Any]:
     if not batch.SAFE_NAME.fullmatch(version) or source_version == version:
         raise ValueError('Use a safe new version different from the source')
-    state, source_root, records, sources, reviews, csv_sha = _preflight(run_id, source_version, csv_path)
+    state, _source_root, records, sources, reviews, csv_sha = _preflight(run_id, source_version, csv_path)
     profile = state['profile']
     parent = batch.PROJECT_ROOT / 'outputs' / 'candidates' / profile
     final = parent / version
