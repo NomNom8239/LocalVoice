@@ -98,9 +98,12 @@ def test_bootstrap_requires_confirmed_identity_and_supports_multiple_labels(monk
     monkeypatch.setattr(module.sys, "stdin", type("TTY", (), {"isatty": lambda self: True})())
     responses = iter(["SPEAKER_00,SPEAKER_01", "YES"])
     monkeypatch.setattr("builtins.input", lambda _: next(responses))
-    for name in ("a.wav", "b.wav"):
+    for name in ("a.wav", "b.wav", "c.wav"):
         (tmp_path / name).touch()
-    paths = {"SPEAKER_00": [tmp_path / "a.wav"], "SPEAKER_01": [tmp_path / "b.wav"]}
+    paths = {
+        "SPEAKER_00": [tmp_path / "a.wav", tmp_path / "c.wav"],
+        "SPEAKER_01": [tmp_path / "b.wav"],
+    }
     sources = {
         "SPEAKER_00": [(1, 5, "SPEAKER_00"), (10, 14, "SPEAKER_00")],
         "SPEAKER_01": [(20, 24, "SPEAKER_01")],
@@ -187,11 +190,12 @@ def test_preview_requires_confirmed_person_and_never_guesses_label(monkeypatch, 
     inputs = iter(["SPEAKER_00", "NO", "q"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
     with pytest.raises(RuntimeError, match="canceled"):
-        wav = tmp_path / "a.wav"
-        wav.touch()
+        wavs = [tmp_path / f"clip{i}.wav" for i in range(3)]
+        for wav in wavs:
+            wav.touch()
         module.choose_bootstrap_speakers(
             {"SPEAKER_00": [(0, 5, "SPEAKER_00")] * 3},
-            {"SPEAKER_00": [wav, wav, wav]},
+            {"SPEAKER_00": wavs},
         )
 
 
