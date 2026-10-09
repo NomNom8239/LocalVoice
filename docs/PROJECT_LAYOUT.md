@@ -44,7 +44,7 @@ LocalVoice/
 ├── src/localvoice/                 # future: new application modules
 │   ├── __main__.py                 # ONE CLI (python -m localvoice ...)
 │   ├── transcription/             # existing asr-pilot; full ASR deferred
-│   ├── style/                     # acoustic AST/CLAP candidate pilot only; full classifier pending
+│   ├── style/                     # AST/CLAP 12-clip pilot + AST full batch candidate/export implementation
 │   ├── quality/                   # proposed owner for identity/QC/review; create if needed
 │   └── dataset/                   # planned versioned Japanese-category export
 ├── tests/                          # future: tests organized by feature
@@ -83,6 +83,10 @@ Do not claim that the old acquisition pipeline is read-only, or move existing `d
 6. Never modify upstream Irodori-TTS files to compensate for a LocalVoice issue. Keep launch/integration glue in LocalVoice, and use the upstream UI as shipped. The official UI may generate `Irodori-TTS/gradio_outputs_voicedesign/`; copy any audio worth retaining into `outputs/tts/` before a future reinstall.
 7. A proposed new module, CLI entry point, environment, or output directory needs a documented purpose and an owner in this table. If an existing location owns the responsibility, extend that implementation rather than adding another file.
 8. **Library v1 acceptance:** verify a real existing WAV subset from candidate → acoustic classification → independent identity/QC → targeted human review → versioned Japanese category folder → playback and manual selection in upstream VoiceDesign. Confirm read-only `data/`, preserved unknown/rejections, manifest provenance and immutable outputs. Full new archive-to-dataset E2E is a **later LV-R07 task**, not the current library v1 gate. Isolated module tests do not substitute for this existing-WAV E2E.
+
+## Implementation checkpoint — AST full-batch code added (2026-10-09)
+
+`src/localvoice/style/batch.py` and the existing single CLI now own read-only AST batch inventory, incremental predictions, checkpoint/resume, and staged `outputs/candidates/<profile>/<version>/` browse export. Offline mock regressions are in `tests/test_style_batch.py`; [Windows runbook](AST_BATCH_RUNBOOK.md) is available. **Do not claim GPU full-batch acceptance before the user runs and verifies all 1,167 WAVs.** The separate reviewed `outputs/datasets/` library, identity/QC review integration and new-stream E2E are still pending.
 
 ## Execution priority clarification: AST best-effort browse first (2026-10-09)
 
