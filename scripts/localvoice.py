@@ -648,6 +648,16 @@ def main() -> None:
 
     config = load_config(args.config)
 
+    # Detect a partially-written Bank before any expensive URL/download/separation.
+    initial_ref_root = reference_dir(config, args.profile)
+    initial_npz = initial_ref_root / "self_reference_bank.npz"
+    initial_json = initial_ref_root / "self_reference_bank.json"
+    if initial_npz.exists() != initial_json.exists():
+        raise RuntimeError(
+            f"Incomplete Reference Bank at {initial_ref_root}: "
+            "NPZ/JSON must both exist. Inspect rather than overwriting."
+        )
+
     default_accept, default_review, default_top_k = load_thresholds(
         config,
         args.profile,
