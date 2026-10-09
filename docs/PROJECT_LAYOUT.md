@@ -1,7 +1,7 @@
 # LocalVoice directory ownership and change rules
 
-Status: adopted for the clean-baseline branch (2026-10-09).
-Scope: development layout and file-placement rules only. This document does not claim that future directories or features already exist.
+Status: adopted as directory-ownership rules; delivery priorities updated 2026-10-09 on `feature/phase3-asr-pilot`.
+Scope: directory and non-destructive write contracts. The current MVP is a human-browsable, **Japanese-category reference WAV library v1 from the existing 1,167 `Ui_Shigure` candidate WAVs**. ASR is optional metadata and does not gate acoustic classification, review, or export. This document does not claim unimplemented features already exist.
 
 ## Ownership boundaries
 
@@ -9,13 +9,13 @@ Scope: development layout and file-placement rules only. This document does not 
 | --- | --- | --- | --- |
 | `data/` | Existing acquired audio, review decisions, reference banks and legacy outputs | Ignored; preserve in place | **No writes by newly developed ASR/style/dataset stages.** Existing legacy scripts have established writes here; do not alter their contracts without a separate, tested migration. Never bulk-clean this directory. |
 | `scripts/` | Existing archive retrieval, separation, diarization, identity verification, review, and RVC dataset commands | Tracked | Maintain the existing entry points. Do not add new ASR/style experiment scripts here. |
-| `src/localvoice/` | **Future** first-party application code for transcription, style assessment, dataset export and orchestration | Tracked | All new Phase 3+ application code goes here. Create only modules that the approved implementation actually needs. |
+| `src/localvoice/` | First-party application code (ASR Pilot implemented; style assessment, QC/review and library export pending) | Tracked | Place new acoustic classification, QC/review and export code here under one CLI; do not modify legacy acquisition scripts solely for these stages. |
 | `tests/` | Tests for first-party code | Tracked | Tests reflect public behavior and IO boundaries; fixtures cannot silently depend on private `data/`. |
 | `docs/` | Stable layout, design decisions and operating instructions | Tracked | Keep stable rules in this document; put significant architecture decisions in `docs/decisions/` when they occur. |
 | `Irodori-TTS/` | **Upstream** Irodori-TTS standalone Git clone and runtime | Ignored by LocalVoice | Do not add LocalVoice code, patches, tools, LoRA experiments, or custom datasets inside. Normal upstream-managed `.venv/`, `gradio_outputs_voicedesign/`, and caches may appear. |
 | `.venv/` | Existing LocalVoice acquisition/processing Python runtime | Ignored | No extra environments without a documented dependency conflict. Irodori uses its own `Irodori-TTS/.venv/`. |
-| `work/` | **Future** disposable, per-run intermediate outputs | Ignored | New operations create a fresh run ID; never overwrite another run or `data/`. Safe to regenerate, but do not automatically wipe unknown contents. |
-| `outputs/` | **Future** promoted, reviewed deliverables (datasets, transcripts if exported, selected synthesized audio) | Ignored | Immutable versioned deliveries; never silently replace or delete. |
+| `work/` | Per-run intermediate outputs, ASR Pilot evidence, classification/QC/review candidates | Ignored | Create a fresh run ID; never overwrite another run or `data/`. Save failure/unknown/review records; do not automatically wipe contents. |
+| `outputs/` | Promoted, human-approved versioned reference WAV libraries and optional other deliverables | Ignored | Copy only identity/QC/style-approved audio; publish immutable versioned deliveries and never silently replace or delete. |
 | `cache/` | **Optional** disposable model/tool caches explicitly configured for this project | Ignored | Prefer tool defaults outside the source tree; never place cache files in `scripts/`, `src/`, or the upstream repository as custom additions. |
 | `start_irodori_voicedesign.bat` | LocalVoice launch entry point for upstream WebUI | Currently local/untracked | May be versioned after checking for machine-specific paths; never store the launcher within upstream. |
 | `config.toml` | Existing pipeline settings and legacy data-root mapping | Tracked | Do not repurpose legacy keys or change their meanings to implement new stages. |
@@ -30,7 +30,7 @@ LocalVoice/
 ├── .gitignore
 ├── README.md
 ├── config.toml                     # legacy acquisition pipeline config
-├── pyproject.toml                  # future: create when packaging Phase 3
+├── pyproject.toml                  # current editable package configuration
 ├── start_irodori_voicedesign.bat   # current local launcher
 ├── scripts/                        # existing acquisition/review commands ONLY
 │   ├── localvoice.py
@@ -42,15 +42,16 @@ LocalVoice/
 │   ├── build_rvc_dataset.py
 │   └── common.py
 ├── src/localvoice/                 # future: new application modules
-│   ├── __main__.py                 # future: ONE CLI (python -m localvoice ...)
-│   ├── transcription/             # Phase 3 only
-│   ├── style/                     # Phase 4 only
-│   └── dataset/                   # Phase 5 integration only
+│   ├── __main__.py                 # ONE CLI (python -m localvoice ...)
+│   ├── transcription/             # existing asr-pilot; full ASR deferred
+│   ├── style/                     # planned acoustic expression classifier
+│   ├── quality/                   # proposed owner for identity/QC/review; create if needed
+│   └── dataset/                   # planned versioned Japanese-category export
 ├── tests/                          # future: tests organized by feature
 ├── docs/
 │   └── PROJECT_LAYOUT.md          # this document
 ├── data/                           # existing data; DO NOT MIGRATE/DELETE
-├── work/<run-id>/                  # future: intermediates, manifests, logs
+├── work/<run-id>/                  # per-run inputs, predictions, QC, review, manifests, logs
 ├── outputs/datasets/<profile>/<version>/   # future: human-browsable, approved Emoji Palette-aligned audio library
 ├── outputs/tts/                    # future: retained copies of WebUI audio
 ├── cache/                          # optional: explicitly configured cache
@@ -62,7 +63,7 @@ LocalVoice/
     └── gradio_outputs_voicedesign/ # upstream runtime output, if generated
 ```
 
-Do not create placeholder directories or files just to match the diagram. In particular, `src/`, `work/`, `outputs/`, `tests/`, and `pyproject.toml` need not exist until a task requires them.
+Do not create placeholder directories or files merely to match the diagram. On the active ASR Pilot branch, `src/localvoice/`, `work/` (local), `tests/` and `pyproject.toml` already have concrete roles; `quality/`, `style/`, `dataset/` and final `outputs/datasets/` are **proposed future capabilities**, not claims of implementation.
 
 ## Existing acquisition compatibility: exception, not the new pattern
 
@@ -70,25 +71,31 @@ Do not create placeholder directories or files just to match the diagram. In par
 
 The existing `scripts/localvoice.py --force` deletes a selected `data/runs/<profile>/<run-name>` folder before recreating it. **Never use `--force` against an existing run without a separate, explicit backup/review.** Phase 3+ code must not reuse that destructive execution pattern.
 
-Do not claim that the old acquisition pipeline is read-only, or move existing `data/` items as part of Phase 3. Any future migration of the legacy pipeline's output root requires its own scoped design and regression tests.
+Do not claim that the old acquisition pipeline is read-only, or move existing `data/` items as part of new classification/export work. New Phase 3+ capabilities must treat `data/` as read-only. Any future migration of the legacy pipeline's output root requires its own scoped design and regression tests.
 
 ## Phase 3+ creation rules
 
-1. Start with one user-facing command interface (`python -m localvoice ...`) and one reusable, import-safe code path per capability. Build its editable-package configuration when Phase 3 is implemented. Never create `*_v2.py`, `*_final.py`, `experiment_*.py`, and similar parallel implementations in the source tree.
-2. Transcription consumes approved audio **by absolute/validated input path** from `data/` (or another explicitly chosen source); it writes only to a fresh `work/<run-id>/`. It does **not** train models or auto-update speaker reference banks.
-3. Style assessment is separate from speech recognition. Missing, nonverbal, ambiguous or unsupported evidence remains explicitly `unknown`/`requires_review`; ASR text is not proof of a vocal style.
-4. Each run records a manifest with run ID, source identity/path and fingerprint, selected models/config versions, stage statuses, and output paths. Save evidence and failures, not just success files. A final reviewed dataset export is a separate, explicit promotion to a new version under `outputs/datasets/`. **The promoted folders must be usable by people without opening metadata files:** see [Emoji Palette-aligned audio library specification](EMOJI_AUDIO_DATASET.md).
+1. Use the existing user-facing command interface (`python -m localvoice ...`) and a reusable, import-safe code path per capability. The ASR Pilot already uses this CLI; extend it rather than creating parallel `*_v2.py`, `*_final.py`, or `experiment_*.py` implementations.
+2. ASR (when invoked) consumes explicitly selected audio **by absolute/validated input path** from `data/` (or another chosen source) and writes only to new `work/<run-id>/`. It does **not** train models or update speaker reference banks. **ASR output is optional** for acoustic classification, QC, review and library export.
+3. Style assessment is **acoustic** and separate from speech recognition, speaker identity and recording QC. The existing 1,167 WAVs are candidates, not all human-approved/clean/classified. Each gets a classification/QC outcome or explicit failure/unknown; nonverbal, ambiguous and unsupported evidence stays `unknown`/`requires_review`. ASR text is not proof of a vocal style.
+4. Each run records a manifest with run ID, original clip/segment identity and offsets, source path/SHA, acquisition provenance, identity decision, QC result, acoustic-style candidates, any reviewer approval, model/config/taxonomy versions, failures and outputs. No invented confidence or implicit approval. Final export is a separate promotion under `outputs/datasets/<profile>/<version>/`. **Folders must be browsable and playable without opening metadata files**, with `README.txt`, `index.csv` and `manifest.jsonl`: see [Emoji Palette-aligned audio library specification](EMOJI_AUDIO_DATASET.md).
 5. No implicit recursive cleanup, auto-approval, destructive overwrite, or silent modification of existing audio/reference banks. New operations fail closed on destination conflicts. Data operations and tests must not depend on the user's private recordings being present.
 6. Never modify upstream Irodori-TTS files to compensate for a LocalVoice issue. Keep launch/integration glue in LocalVoice, and use the upstream UI as shipped. The official UI may generate `Irodori-TTS/gradio_outputs_voicedesign/`; copy any audio worth retaining into `outputs/tts/` before a future reinstall.
 7. A proposed new module, CLI entry point, environment, or output directory needs a documented purpose and an owner in this table. If an existing location owns the responsibility, extend that implementation rather than adding another file.
-8. Verify the entire archive-to-dataset flow with an actual sample before declaring Phase 5 complete. A test pass for isolated modules is not an integration pass.
+8. **Library v1 acceptance:** verify a real existing WAV subset from candidate → acoustic classification → independent identity/QC → targeted human review → versioned Japanese category folder → playback and manual selection in upstream VoiceDesign. Confirm read-only `data/`, preserved unknown/rejections, manifest provenance and immutable outputs. Full new archive-to-dataset E2E is a **later LV-R07 task**, not the current library v1 gate. Isolated module tests do not substitute for this existing-WAV E2E.
 
-## Phase gates
+## Current MVP, phase gates and dependencies (2026-10-09)
 
-- **Phase 1:** baseline code retains archive acquisition and speaker/dataset processing; old independent LoRA files are excluded.
-- **Phase 2:** official Irodori-TTS installed independently, GPU works, and reference-audio VoiceDesign generation succeeds.
-- **Phase 3:** follow [Phase 3 Japanese ASR contract](PHASE3_JAPANESE_ASR.md): approve model/backend selection after real-data pilot, frozen evaluation, and input/output schema **before** implementation. Implement **only** `src/localvoice/transcription/`, one CLI integration, and matching tests. Distinguish speech/non-speech/uncertain events for later classification; **do not** classify Emoji Palette styles at this stage. Existing `data/` is read-only to this stage.
-- **Phase 4:** approve style-label taxonomy (including distinguishable Emoji Palette-aligned categories and human review) separately; implement `src/localvoice/style/` and corresponding tests.
-- **Phase 5:** export reviewed clips into versioned **human-browsable Japanese category folders** under `outputs/datasets/<profile>/<version>/audio/` (normal conversation, whisper, laughter, moans, breathlessness, etc.) with CSV/JSONL index. Verify real end-to-end provenance, error handling, ease of manual use and non-modification of existing inputs.
+**MVP / current priority:** Generate a versioned, human-browsable reference WAV library from the existing **1,167** `data/training_audio/Ui_Shigure/audio/` candidate WAVs. This includes candidate classification/QC coverage for all inputs, but **does not require that every recording be automatically approved**. Unknown/foreign speaker/QC failures stay outside the promoted library. Only reviewed and approved clean references are copied. Users manually choose a file in Explorer and attach it to upstream Irodori-TTS VoiceDesign; fully automated synthesis is not an MVP requirement.
+
+- **LV-R00 / Phase 1 (done):** preserve legacy acquisition/diarization/speaker processing and clarify ownership; old independent LoRA experiments are excluded.
+- **LV-R02 / Phase 2 (done):** upstream Irodori-TTS installed independently, GPU works, and manual reference-WAV VoiceDesign generation has been tried. This does **not** imply automatic selection or style QC.
+- **LV-R03 / ASR auxiliary (Pilot done, full adoption deferred):** 12-sample Kotoba-Whisper v2.0 and Whisper large-v3 CUDA runs each processed 12/12; both hallucinated on artificial silence and Whisper repeated text on nonverbal clips. Detailed evaluation/48-sample ASR comparison is optional later. **It is not a prerequisite for LV-R04, LV-R06, or LV-R05.** See [ASR contract](PHASE3_JAPANESE_ASR.md).
+- **LV-R04 / Acoustic style classification (first priority):** approve audibly distinguishable primary Japanese category labels and optional secondary tags; use human-ground-truth real audio to evaluate candidate classifiers; process all 1,167 files to classification candidates/unknown/failure evidence. ASR transcripts are **not** ground-truth style labels. Do not generate a forced definitive label for uncertain or mixed sounds.
+- **LV-R06 / Speaker identity + recording QC + targeted human review (parallel with LV-R04):** keep identity, quality and style distinct; preserve existing manual approvals; screen for other speakers/game voice, clipping/BGM/noise and unusable material; present only ambiguous/high-risk cases for replay and approve/reject/defer with durable provenance. Mechanical WAV-format acceptance is not quality or speaker approval.
+- **LV-R05 / Category library export (can prototype with a small explicitly approved subset):** combine LV-R04 style and LV-R06 QC/reviewer records; copy **only approved** WAVs/segments into `outputs/datasets/<profile>/<version>/audio/<Japanese-category>/` plus human README, Excel-compatible index and manifest. Verify real existing-WAV end-to-end and manual upstream VoiceDesign upload. Do not overwrite `data/`, prior releases, or upstream checkout.
+- **LV-R07 / Future archive ingestion E2E:** hook new streaming archives into the library workflow only after v1. Do not make it an acceptance gate for v1.
+
+The 48-sample **ASR** comparison and automated Irodori control are out of scope for library v1. Acoustic **style** validation with separately human-labeled audio is still mandatory. Change these boundaries in GitHub docs before expanding implementation, not by silently relaxing QC.
 
 If requirements change, change this layout/decision first; do not place additional scripts in whichever directory is convenient.
