@@ -7,7 +7,7 @@ import shutil
 
 import pytest
 
-from localvoice.style import batch, review_export
+from localvoice.style import batch, catalog, review_export
 
 
 @pytest.fixture
@@ -168,3 +168,125 @@ def test_reject_without_reason_and_hold_are_not_ready(prepared):
     report=review_export.apply_review(run_id,csv_file)
     assert report['held']==1 and report['reviewed_usable']==0
     assert (v1.parent/'v2'/'audio'/review_export.HELD).exists()
+
+
+def test_metadata_archive_v1_v2_and_reviewer_json_without_wav_copies(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    review_export.apply_review(run_id, csv_file)
+    json_file = root / "html_review.json"
+    json_file.write_text('{"schema":"localvoice.ast-review.v1","records":[]}', encoding="utf-8")
+    a = catalog.archive(run_id, "v1", dry_run=True)
+    assert a["wav_referenced"] == 4 and a["wav_copies_created"] == 0
+    assert not (root / "outputs" / "metadata").exists()
+    a = catalog.archive(run_id, "v1")
+    b = catalog.archive(run_id, "v2", review_csv=csv_file, review_json=json_file)
+    meta = root / "outputs" / "metadata" / "Ui_Shigure"
+    assert (meta / "inbox" / "README.txt").exists()
+    assert not list(meta.rglob("*.wav"))
+    assert (meta / "versions" / "v2" / "review" / "review_decisions.csv").read_bytes() == csv_file.read_bytes()
+    assert (meta / "versions" / "v2" / "review" / "review_state.json").read_bytes() == json_file.read_bytes()
+    assert a["wav_referenced"] == b["wav_referenced"] == 4
+    assert catalog.verify("Ui_Shigure", "v1")["wav_referenced"] == 4
+    assert catalog.verify("Ui_Shigure", "v2")["wav_referenced"] == 4
+    with pytest.raises(FileExistsError, match="already exists"):
+        catalog.archive(run_id, "v1")
+    assert len(list((v1 / "audio").rglob("*.wav"))) == 4
+    assert len(list((v1.parent / "v2" / "audio").rglob("*.wav"))) == 4
+
+
+def test_metadata_revise_cumulative_review_without_copy_and_restore(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    review_export.apply_review(run_id, csv_file)
+    catalog.archive(run_id, "v1")
+    catalog.archive(run_id, "v2", review_csv=csv_file)
+    updated = rows + [{
+        "source_id": "c00003", "source_sha256": inputs[2]["source_sha256"],
+        "ast_category": "01_通常会話", "manual_category": "02_囁き",
+        "decision": "keep", "identity": "self", "quality": "ok",
+        "reject_reason": "", "memo": "added next round", "updated_at": "2026-10-09T12:00:00Z",
+    }]
+    write(updated)
+    report = catalog.revise("Ui_Shigure", "v3", "v2", csv_file, dry_run=True)
+    assert report["wav_referenced"] == 4 and report["wav_copies_created"] == 0
+    assert not (root / "outputs" / "metadata" / "Ui_Shigure" / "versions" / "v3").exists()
+    catalog.revise("Ui_Shigure", "v3", "v2", csv_file)
+    meta = root / "outputs" / "metadata" / "Ui_Shigure" / "versions"
+    assert not list((meta / "v3").rglob("*.wav"))
+    assert catalog.verify("Ui_Shigure", "v3")["status"] == "VERIFIED_METADATA_AND_SOURCE_WAV"
+    assert catalog.verify("Ui_Shigure", "v2")["wav_referenced"] == 4
+    entries = batch._read_jsonl(meta / "v3" / "manifest.jsonl")
+    by_id = {e["source_id"]: e for e in entries}
+    assert by_id["c00003"]["category_dir"] == "02_囁き"
+    assert by_id["c00003"]["review_status"] == "reviewed_usable"
+    assert by_id["c00002"]["category_dir"] == catalog.review_export.CAUTION
+    assert by_id["c00004"]["category_dir"] == catalog.review_export.REJECTED
+    assert all(e["human_approved"] is False for e in entries)
+    dry = catalog.materialize("Ui_Shigure", "v3", "restored-v3", dry_run=True)
+    assert dry["wav_count"] == 4 and not (v1.parent / "restored-v3").exists()
+    result = catalog.materialize("Ui_Shigure", "v3", "restored-v3")
+    assert result["wav_count"] == 4
+    restored = v1.parent / "restored-v3"
+    assert len(list((restored / "audio").rglob("*.wav"))) == 4
+    assert (restored / "audio" / "02_囁き").is_dir()
+    with pytest.raises(FileExistsError, match="will not be overwritten"):
+        catalog.materialize("Ui_Shigure", "v3", "restored-v3")
+    assert len(list((v1.parent / "v2" / "audio").rglob("*.wav"))) == 4
+
+
+def test_metadata_missing_or_modified_original_fails_closed(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    catalog.archive(run_id, "v1")
+    original = root / "data" / "training_audio" / "Ui_Shigure" / "audio" / "1.wav"
+    original.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="Source changed before export"):
+        catalog.verify("Ui_Shigure", "v1")
+    with pytest.raises(ValueError, match="Source changed before export"):
+        catalog.materialize("Ui_Shigure", "v1", "recovered")
+    assert not (v1.parent / "recovered").exists()
+
+
+def test_metadata_source_release_or_review_csv_mismatch_rejected(prepared):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    review_export.apply_review(run_id, csv_file)
+    (v1 / manifest[0]["output_path"]).write_bytes(b"bad-release-wav")
+    with pytest.raises(ValueError, match="SHA mismatch"):
+        catalog.archive(run_id, "v1")
+    assert not (root / "outputs" / "metadata").exists()
+    (v1 / manifest[0]["output_path"]).write_bytes(
+        (root / "data" / "training_audio" / "Ui_Shigure" / "audio" / "1.wav").read_bytes()
+    )
+    changed = [dict(rows[0], memo="different review after v2")]
+    write(changed)
+    with pytest.raises(ValueError, match="CSV SHA"):
+        catalog.archive(run_id, "v2", review_csv=csv_file)
+    assert not (root / "outputs" / "metadata").exists()
+
+
+def test_metadata_versions_check_integrity_and_resume_materialization(prepared, monkeypatch):
+    root, run_id, v1, csv_file, inputs, manifest, rows, write = prepared
+    catalog.archive(run_id, "v1")
+    saved = root / "outputs" / "metadata" / "Ui_Shigure" / "versions" / "v1" / "manifest.jsonl"
+    contents = saved.read_bytes()
+    saved.write_bytes(contents + b"\n")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        catalog.verify("Ui_Shigure", "v1")
+    saved.write_bytes(contents)
+    assert catalog.verify("Ui_Shigure", "v1")["wav_referenced"] == 4
+    real_copy = catalog.shutil.copyfileobj
+    calls = 0
+
+    def interrupted(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("temporary disk interruption")
+        return real_copy(*args, **kwargs)
+
+    monkeypatch.setattr(catalog.shutil, "copyfileobj", interrupted)
+    with pytest.raises(OSError, match="interruption"):
+        catalog.materialize("Ui_Shigure", "v1", "restored")
+    monkeypatch.setattr(catalog.shutil, "copyfileobj", real_copy)
+    with pytest.raises(FileExistsError, match="Incomplete materialization"):
+        catalog.materialize("Ui_Shigure", "v1", "restored")
+    assert catalog.materialize("Ui_Shigure", "v1", "restored", resume=True)["wav_count"] == 4
+    assert len(list((v1.parent / "restored" / "audio").rglob("*.wav"))) == 4
