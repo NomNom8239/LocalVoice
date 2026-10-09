@@ -25,7 +25,7 @@ The labels align with **the actual upstream palette** as implemented in [`Aratak
 | `hum` | `11_鼻歌` | 🎵 鼻歌 | Humming |
 | `other_approved` | `90_その他_承認済み` | None (fallback) | Usable clip manually approved but not a listed category |
 
-Only create populated categories; do not create 40+ empty folders to mirror every palette button. Labels such as `😏 からかう`, `🫶 優しく`, `😭 泣き声`, `😠 怒り`, `🎵 鼻歌`, etc. may be proposed as **secondary tags** until their audible boundaries and human-labeled evaluation data support a separate folder. `⏸️ 間` is not a standalone reference voice class; `📢 エコー` and `📞 電話越し` describe recording/effect conditions and are not separate clean reference voice classes. Their presence should be tracked and may be a QC reason to exclude the clip.
+Only create populated categories; do not create 40+ empty folders to mirror every palette button. Labels such as `😏 からかう`, `🫶 優しく`, `😠 怒り`, `😪 眠そう`, etc. may be proposed as **secondary tags** until their audible boundaries and human-labeled evaluation data support a separate folder. `⏸️ 間` is not a standalone reference voice class; `📢 エコー` and `📞 電話越し` describe recording/effect conditions and are not separate clean reference voice classes. Their presence should be tracked and may be a QC reason to exclude the clip.
 
 ## Ownership by phase
 
