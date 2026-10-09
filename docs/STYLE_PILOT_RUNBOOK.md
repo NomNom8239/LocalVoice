@@ -17,6 +17,12 @@ Compare:
 
 The initial Pilot may reuse the existing, SHA-sealed **12-WAV selection**. This avoids reselecting/relabeling WAVs just to test model inference; it does NOT replace independently reviewed acoustic ground truth. More representative recordings (separate breaths, laughs, moans, whispering, game speech and actual noise) will be needed to evaluate model quality. The 3-second artificial-silence item is a negative integration check, not a replacement for real recording noise.
 
+## Priority decision: AST-only is sufficient to proceed
+
+The required first model is **AST**. Run the 12-clip AST smoke test, then proceed to implement/execute a read-only **1,167-file batch candidate classifier** and provisional Japanese category output. **Do not block** that next step on a CLAP run, perfect differentiation of whispers/sighs/moans, 48-clip ASR comparisons, per-sample human annotation, or fine segmentation. These are optional improvements.
+
+This document still explains CLAP for an optional later comparison. The current `style-pilot run` implementation deliberately handles **at most 32 selected WAVs**, does not implement whole-library batch or folder export, and sets all candidates to `requires_review`. A follow-up LV-R04/R05 implementation must connect AST rank → mapped category/unknown → explicitly **unverified** `outputs/candidates/<profile>/<version>/audio/` browsing folders. That review flag must not prevent unverified browsing, but it must prevent claims of human verification. Source files remain immutable.
+
 ## 1. Branch / environment / read-only preflight
 
 PowerShell:
@@ -72,7 +78,7 @@ Get-Content ".\work\$astRunId\style_predictions.jsonl" -Encoding UTF8 |
 
 `status=completed, completed=12, failed=0` means **only technical inference success**. Every record intentionally has `review_status=requires_review` and `human_approved=false`. Predicted scores/ranks do not imply acceptance.
 
-## 4. CLAP SECOND, new run and separate model process
+## 4. OPTIONAL — CLAP, separate model process (not required to proceed)
 
 After AST exits fully and its run is inspected:
 
