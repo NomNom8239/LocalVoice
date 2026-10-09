@@ -12,6 +12,19 @@ The processing workflow is: **input WAV inventory → acoustic style candidate a
 
 Category names are aligned to the [official Irodori Emoji Palette implementation](https://github.com/Aratako/Irodori-TTS/blob/main/irodori_tts/gradio_emoji_palette.py), but **Emoji Palette entries are synthesis-time controls, not an audio classifier or ground-truth recording labels**. Track palette revision when freezing the taxonomy. Actual reference conditioning also depends on recording quality; a category alone does not guarantee the corresponding style will be synthesized.
 
+## Pragmatic two-tier delivery (2026-10-09 decision)
+
+**Do not block the user's first useful library on perfect discrimination among whisper, sigh, pant and moan.** The near-term priority is to process the existing 1,167 WAVs with **AST alone** and create a human-browsable, **explicitly unverified candidate category library**. CLAP, 48-sample ASR accuracy evaluation, class-by-class human reference annotation, fine-grained segmentation, and calibrated confidence/recall benchmarks are **not prerequisites** to this first batch/browse deliverable.
+
+- **Candidate/browse stage (first delivery):** AST assigns best-effort **suggested** Japanese categories when supported by its available AudioSet label set. No supported label, weak/ambiguous/overlapping evidence, or unsupported expressions are stored under `99_未分類_要確認` (or a clearly marked mixed category), not forced into a false claim. Retain raw AST scores, label mapping version, input SHA, review status and any QC warnings. Every one of the 1,167 inputs must remain accounted for, including prediction failures. Keep original WAVs unchanged.
+- **Candidate output:** `outputs/candidates/<profile>/<version>/audio/<Japanese-category>/` plus `README.txt`, `index.csv` and `manifest.jsonl`. Mark the entire candidate version **UNVERIFIED / AST suggested grouping** prominently; allow manual browsing without Notion/Python. Provisional file placement does **not** assert a human-approved category or clean audio. It is a separate delivery surface from approved libraries.
+- **Approved/curated stage (later or parallel):** LV-R06 identity/QC plus human-reviewed style approval may promote selected clips to the existing **`outputs/datasets/<profile>/<version>/`** structure. Only this verified area may be called human-approved and clean. Prior manually approved provenance remains intact, but do not mark automatically collected `my_voice` as explicitly human-reviewed.
+- Start at **WAV-level classification**, even if some short WAVs contain mixed events. Fine-grained segmentation, model ensembling and retraining are subsequent improvements only when the candidate library's actual use reveals a need.
+- A quick AST technical smoke test is enough to proceed to batch **candidate grouping**; do not demand calibrated distinction among all acoustic classes before moving on. Critical technical blockers (cannot load model, corrupt input evidence, unsafe writes, missing per-input status) still stop the run.
+- Avoid a pipeline that sets `requires_review` on every file **and then refuses to make anything browsable**. `requires_review` must block **verified approval**, not the clearly labeled unverified browsing version. Unknown-category material remains accessible as unknown, not deleted.
+
+This deliberately separates **useful organization now** from **quality certification later**, without silently relaxing the integrity checks on final approved exports.
+
 ## Initial category taxonomy
 
 | Stable code | Export directory | Corresponding Palette entry | Label evidence |
@@ -39,7 +52,7 @@ Only create populated categories; do not create 40+ empty folders to mirror ever
 - **LV-R03 / optional ASR auxiliary:** ASR is a separate, non-blocking source of text/time estimates, not a required stage of acoustic classification or export. Its 12-sample CUDA Pilot passed technically; 48-sample formal comparison and full-ASR adoption are deferred. See [ASR status/contract](PHASE3_JAPANESE_ASR.md).
 - **LV-R07 / later ingestion E2E:** New streaming archive acquisition through processing → library may be implemented after the existing-WAV v1 is usable. Not a v1 completion gate.
 
-The output folder is a **manual lookup tool**, not evidence that emoji-only conditioning or LoRA training works. Upstream VoiceDesign UI remains untouched.
+Both unverified candidate and approved output folders are **manual lookup tools**, not evidence that emoji-only conditioning or LoRA training works. Upstream VoiceDesign UI remains untouched. Do not confuse a candidate's display location with an approval.
 
 ## Intended on-disk output
 
@@ -91,6 +104,7 @@ These directories are examples of the *final schema*, not directories to create 
 - **Reviewer protection:** valid identity + QC + human-approved primary style are all necessary before a WAV/segment is copied into the library. Suspect foreign/game voices, poor audio, ambiguous style, errors and review backlog stay outside promoted folders.
 - **Human usability:** new immutable `outputs/datasets/<profile>/<version>/audio/<Japanese-category>/` folders for **populated** categories, `README.txt`, `index.csv` and `manifest.jsonl`, playable in Explorer without Notion/Python or a custom browser. Manually pick at least one published WAV in official VoiceDesign to validate compatibility.
 - **Data safety:** no writes to existing `data/`, no changes inside `Irodori-TTS/`, no overwriting previous output versions. Run manifests retain source hashes, offsets, QC, classification and approval provenance; no silent duplication or deletion.
+- **Unverified candidate library first:** All 1,167 input WAVs receive best-effort AST candidate grouping or an explicit unknown/error record; browse copies are distinctly labeled unverified under `outputs/candidates/` and never treated as approved. They are not blocked by individual human reviews. The requirements above for identity/QC/human approval apply to the **separate, verified** `outputs/datasets/` area.
 - **Out of scope for v1:** 48-sample **ASR** accuracy comparison, complete ASR transcription, new-stream archive E2E (LV-R07), automated VoiceDesign operations and LoRA training. These are **not** blockers for LV-R04/06/05. Test the actual archive-to-library pathway in LV-R07 after library v1.
 
 Phase 3 Pilot must not auto-sort WAVs based on transcript text. LV-R04 owns acoustic candidates, LV-R06 owns identity/QC/reviewer evidence, and LV-R05 owns approved versioned library export. The ASR result may be included as optional metadata only.
