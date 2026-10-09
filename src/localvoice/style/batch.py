@@ -468,6 +468,12 @@ def export(run_id: str, version: str, resume: bool) -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "metadata":
+        from .catalog import main as catalog_main
+
+        return catalog_main(argv[1:])
     parser = argparse.ArgumentParser(description="AST batch candidate grouping; sources read-only")
     sub = parser.add_subparsers(dest="command", required=True)
     check = sub.add_parser("inventory", help="SHA-check full source inventory; no output written")
