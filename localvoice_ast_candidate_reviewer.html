@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>LocalVoice — AST分類候補の試聴・レビュー</title>
+<title>LocalVoice — 共通AST分類レビュー（初回・再分類）</title>
 <style>
 :root{color-scheme:dark;--bg:#101722;--panel:#1a2432;--panel2:#222f41;--border:#39475a;--text:#ecf2f8;--muted:#a9b9cc;--cyan:#76d5d8;--green:#70d6a2;--amber:#ffcf80;--red:#fa959c}
 *{box-sizing:border-box}body{margin:0;font:15px/1.65 "Segoe UI","Yu Gothic UI",sans-serif;background:var(--bg);color:var(--text)}main{max-width:1250px;margin:0 auto;padding:28px 24px 80px}h1{font-size:26px;letter-spacing:-.02em;margin:0 0 5px}h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:16px 0 7px}p{margin:6px 0 13px}small,.muted{color:var(--muted)}.intro{max-width:900px;color:var(--muted)}.panel{border:1px solid var(--border);background:var(--panel);padding:19px;border-radius:13px;margin-top:18px}.section-title{display:flex;justify-content:space-between;align-items:center;gap:15px}.step{font-size:12px;background:var(--panel2);color:var(--cyan);padding:3px 9px;border-radius:100px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:15px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}.instructions{background:#11212a;border-left:3px solid var(--cyan);padding:11px 14px;border-radius:5px;color:#d4eff0}.warning{border-left:3px solid var(--amber);padding:8px 11px;background:#29261f;color:#ffe5bb}.hint{font-size:12px;color:var(--muted)}button,select,input{font:inherit}button{border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:9px;padding:9px 13px;cursor:pointer}button:hover{border-color:var(--cyan)}button:disabled{opacity:.4;cursor:default}button.primary{border-color:#319fa5;background:#096e79;color:white;font-weight:650}button.ghost{background:transparent}button.selected{background:#195761;border:2px solid var(--cyan);padding:8px 12px}button.warn{border-color:#93684c}select,input[type=text],input[type=search]{border:1px solid var(--border);background:#0f1926;color:var(--text);border-radius:7px;padding:9px;width:100%;min-width:0}label{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}input[type=file]{width:100%;max-width:100%;font-size:13px}input[type=file]::file-selector-button{background:#1a6570;color:white;border:0;border-radius:5px;padding:9px;margin:4px;cursor:pointer}.info-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.info{background:#101c29;border:1px solid #304256;border-radius:7px;padding:12px}.info b{display:block;color:var(--cyan);font-size:23px}.line{height:1px;background:var(--border);margin:16px 0}.hidden{display:none!important}.tags{display:flex;flex-wrap:wrap;gap:8px}.tag{font-size:12px;border:1px solid var(--border);padding:6px 9px;border-radius:9px;background:#111d29}.tag b{color:var(--cyan)}.badge{display:inline-block;font-size:12px;background:#243449;padding:2px 9px;border-radius:10px;margin-right:6px;color:#cfe5fa}.player audio{width:100%;margin:10px 0}.filetitle{font-family:Consolas,monospace;font-size:13px;overflow-wrap:anywhere;color:#e7f4ff}.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:9px}.toolbar button{white-space:nowrap}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.flex{flex:1}.styles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.styles button{text-align:left;min-height:76px;font-size:14px}.styles button small{display:block;font-size:12px;color:var(--muted);line-height:1.4;margin-top:4px}.pilots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.pilots button{text-align:left;padding:13px;min-height:92px}.pilots button small{display:block;color:var(--muted)}.pilots button strong{font-size:15px}.pilots button .counter{float:right;color:var(--cyan)}.footnote{color:var(--muted);font-size:12px}.message{white-space:pre-wrap;background:#11242b;border:1px solid #32656b;padding:10px 12px;border-radius:7px;margin:13px 0;color:#c9f4ef}.message.error{background:#2e1a22;border-color:#944757;color:#ffc1ca}.scope{margin-top:8px;padding:8px 12px;color:#bdcddd;font-size:12px}.overview{display:flex;gap:10px;flex-wrap:wrap}.overview span{padding:3px 8px;border-radius:6px;background:#101e2a;font-size:12px}.inputhint{display:block;font-size:12px;margin-top:6px;color:var(--muted)}kbd{background:#263347;border:1px solid #52637b;padding:1px 5px;border-radius:4px;color:white;font:12px Consolas,monospace}a{color:#9be1eb}ul{padding-left:20px}.filepickers{display:grid;grid-template-columns:1fr 1fr;gap:12px}.exportButtons{display:flex;gap:10px;flex-wrap:wrap}.previewdetails{color:var(--muted);font-size:12px}details summary{cursor:pointer;color:var(--cyan);font-weight:600}@media(max-width:900px){.styles{grid-template-columns:repeat(2,1fr)}.pilots,.info-list,.grid3{grid-template-columns:repeat(2,1fr)}.grid2,.filepickers{grid-template-columns:1fr}}@media(max-width:500px){main{padding:20px 12px}.styles,.pilots,.info-list,.grid3{grid-template-columns:1fr}.panel{padding:12px}}
@@ -14,17 +14,17 @@
 </head>
 <body><main>
 <header>
-<div class="headertop"><h1>LocalVoice <span style="color:var(--cyan)">音声レビュー</span> — v2以降の再分類</h1><span class="chip">ローカル専用 / WAV原本変更なし</span></div>
-<p class="intro">AST分類とv2の過去レビューを引き継ぎ、必要なWAVだけ手動再分類します。変更は累積CSV/JSONで保存。次版の作成には別途metadata reviseを実行します（音声の複製なし）。</p>
+<div class="headertop"><h1>LocalVoice <span style="color:var(--cyan)">音声レビュー</span> — 初回レビュー・再分類</h1><span class="chip">ローカル専用 / WAV原本変更なし</span></div>
+<p class="intro">話者（profile）や分類回数を固定しない共通レビューツールです。<strong>初回はAST分類済みv1</strong>から分類・確認し、<strong>2回目以降はv2、v3…</strong>のレビューを引き継いで修正できます。結果は累積CSV/JSONで保存します。</p>
 </header>
 <section class="panel" id="loadPanel">
-<div class="section-title"><h2>① v2候補フォルダ、またはメタデータと元WAVを選ぶ</h2><span class="step">最初に一度だけ</span></div>
-<div class="instructions">Chrome / Edgeで <code>outputs/candidates/Ui_Shigure/v2</code> を選択。v2のWAVコピーがない場合は <code>outputs/metadata/Ui_Shigure/versions/v2</code> と <code>data/training_audio/Ui_Shigure/audio</code> をそれぞれ選んでください。選んだ音声は送信・移動されません。</div>
+<div class="section-title"><h2>① 対象profileと分類バージョンのデータを選ぶ</h2><span class="step">最初に一度だけ</span></div>
+<div class="instructions">話者名とバージョンは <code>summary.json</code> から自動取得します。<strong>初回レビュー</strong>はAST分類済みv1、<strong>2回目以降</strong>はv2・v3等を選択します。方法A：<code>outputs/candidates/&lt;profile&gt;/vN</code>。方法B：<code>outputs/metadata/&lt;profile&gt;/versions/vN</code> と <code>data/training_audio/&lt;profile&gt;/audio</code> を指定。</div>
 <div class="upload-grid" style="margin-top:14px">
- <div><label for="libraryDir">方法A：v2候補フォルダ（WAV付き）</label><input id="libraryDir" type="file" webkitdirectory directory multiple><span class="inputhint">v2フォルダそのもの。従来v1も対応。</span></div>
- <div><label for="savedReview">保存済みCSV/JSONを読み込む（任意）</label><input id="savedReview" type="file" accept=".csv,.json,text/csv,application/json"><span class="inputhint">v2の既存レビューはmanifestから自動復元。読み込み時は過去判定を保持。</span></div>
- <div><label for="metadataDir">方法B：versions/v2メタデータ</label><input id="metadataDir" type="file" webkitdirectory directory multiple><span class="inputhint">outputs/metadata/Ui_Shigure/versions/v2。</span></div>
- <div><label for="originalDir">方法B：元WAVのaudioフォルダ</label><input id="originalDir" type="file" webkitdirectory directory multiple><span class="inputhint">data/training_audio/Ui_Shigure/audio。</span></div>
+ <div><label for="libraryDir">方法A：候補フォルダ（v1 / v2 / vN、WAV付き）</label><input id="libraryDir" type="file" webkitdirectory directory multiple><span class="inputhint">最初はv1、再分類ではv2以降。manifest.jsonl / summary.jsonを含むフォルダそのものを選択。</span></div>
+ <div><label for="savedReview">保存済みCSV/JSONを読み込む（任意）</label><input id="savedReview" type="file" accept=".csv,.json,text/csv,application/json"><span class="inputhint">選択した版の既存レビューを自動復元。原本ID・SHA・AST分類が一致するCSV/JSONを取り込み可能。</span></div>
+ <div><label for="metadataDir">方法B：メタデータ版（versions/v1 / v2 / vN）</label><input id="metadataDir" type="file" webkitdirectory directory multiple><span class="inputhint">対象profileの履歴バージョン（manifest.jsonl / summary.json / receipt.jsonを含む）。</span></div>
+ <div><label for="originalDir">方法B：元WAVのaudioフォルダ</label><input id="originalDir" type="file" webkitdirectory directory multiple><span class="inputhint">同じprofileの <code>data/training_audio/&lt;profile&gt;/audio</code>。</span></div>
 </div>
 <div class="statrail" style="margin-top:15px">
  <div class="info"><small>WAV読込</small><b id="total">0</b><span class="labelnum">AST候補</span></div>
@@ -40,7 +40,7 @@
  <div><label for="decisionFilter">レビュー結果</label><select id="decisionFilter"><option value="">すべて</option><option value="unreviewed">未判定</option><option value="keep">採用</option><option value="hold">保留</option><option value="reject">除外</option></select></div>
  <div><label for="search">ファイル名・元ファイルパス・ID検索</label><input id="search" type="search" placeholder="例: c00042 / 配信ID"></div>
 </div>
-<div id="filterSummary" class="hint" style="margin-top:10px">フォルダを選んでください。</div>
+<div id="filterSummary" class="hint" style="margin-top:10px">対象の分類済みライブラリを選んでください。</div><p class="hint">HTML単体ではAST自動推論を実行しません。未分類WAVから開始するときは、先に <code>style-batch run</code> でAST分類を実行し、候補v1または履歴v1を作成します。</p>
 </section>
 <section class="panel player" id="reviewPanel">
 <div class="section-title"><h2>② 音声を聴いて確認する</h2><span class="step" id="cursor">フォルダ未選択</span></div>
@@ -75,13 +75,13 @@
 </section>
 <section class="panel">
 <div class="section-title"><h2>③ レビュー履歴を保存・復元</h2><span class="step">出力は判断記録のみ</span></div>
-<p>「レビューJSON」は途中保存と再開用。「判断CSV」は過去のレビューも含む累積CSVで、metadata reviseコマンドへの投入用です。どちらも<strong>元WAVを移動・削除・変更しません</strong>。ブラウザを閉じる前にCSVとJSONを保存してください。HTMLだけでv3は作成されません。</p>
+<p>「レビューJSON」は途中保存と再開用。「判断CSV」は過去のレビューも含む累積CSVで、<code>metadata revise</code> の入力用です。初回のv1→v2、以後のv2→v3など、どの世代でも使用できます。どちらも<strong>元WAVを移動・削除・変更しません</strong>。ブラウザを閉じる前にCSVとJSONを保存してください。HTML単体では次バージョンは作成されません。</p>
 <div class="exportButtons">
  <button id="exportReview" class="primary" type="button">レビューJSONを保存</button>
  <button id="exportCsv" type="button">判断CSVを保存</button>
 </div>
 <p class="hint">保存JSONにはソースID、SHA-256、判定・手動分類・本人性・音質・メモだけを含みます。音声そのものは含まれません。読み込み時にライブラリのプロファイル・run・入力指紋・記録上のWAV SHAとAST分類を照合します。原本WAVのバイトSHA照合は <code>metadata verify</code> で行ってください。</p>
-<div id="status" class="message" role="status">v2候補フォルダ、またはメタデータと原本audioを選んでください。</div>
+<div id="status" class="message" role="status">分類済みの候補フォルダ（v1/v2/vN）、または履歴メタデータと同じprofileの原本audioを選んでください。</div>
 <details><summary>安全性と制限</summary><p>外部通信・音声のアップロード・Cookie・追跡はありません。HTMLは端末上で完結し、採用しても元WAVや暫定ライブラリを変更しません。保存ファイルはダウンロードフォルダへ生成するだけです。レビュー結果を正式版 <code>outputs/datasets/</code> に反映する処理は別工程です。</p><p class="warning">ブラウザ内で採用しただけでは本人確認・QC承認は完了しません。たとえば話者「本人と確認」および録音品質「問題なし」を記録することはできますが、それを人手で確認した範囲でだけ有効なレビュー証跡として扱ってください。</p></details>
 </section>
 <footer>LocalVoice AST Candidate Reviewer / 元HTML: LocalVoice ASR Pilot Reviewer。分類済みWAVは再推論せず参照するだけ。ページを閉じると未保存の変更が消えます。</footer>
@@ -210,11 +210,11 @@ function activate(entries,info,files,isOriginal){if(entries.length!==info.source
  filterList();tell(info.version+'：WAV '+prepared.length+'件、過去レビュー'+reviews.size+'件を引き継ぎました。');}
 async function loadCandidateFolder(list){const f=fileMap(list),m=f.get('manifest.jsonl'),sum=f.get('summary.json');if(!m||!sum)throw Error('候補フォルダ直下のmanifest.jsonlとsummary.jsonが必要です');
  const info=readSummary(JSON.parse(await sum.text()),false),entries=parseJsonl(await m.text());activate(entries,info,f,false);}
-async function loadMetadataFolder(list){const files=fileMap(list),m=files.get('manifest.jsonl'),sum=files.get('summary.json'),r=files.get('receipt.json');if(!m||!sum||!r)throw Error('versions/v2等の直下にmanifest.jsonl、summary.json、receipt.jsonが必要です');
+async function loadMetadataFolder(list){const files=fileMap(list),m=files.get('manifest.jsonl'),sum=files.get('summary.json'),r=files.get('receipt.json');if(!m||!sum||!r)throw Error('versions/vNの直下にmanifest.jsonl、summary.json、receipt.jsonが必要です');
  const info=readSummary(JSON.parse(await sum.text()),true),receipt=JSON.parse(await r.text());if(receipt.profile!==info.profile||receipt.version!==info.version||receipt.run_id!==info.run_id||receipt.input_sha256!==info.input_sha256)throw Error('receiptとsummaryが一致しません');
  const entries=parseJsonl(await m.text());if(entries.length!==info.source_count)throw Error('manifestの件数が違います');
  state.pendingMeta={info,entries};if(state.pendingOriginal)activate(entries,info,state.pendingOriginal,true);else tell('メタデータ'+info.version+'を読み込みました。続けて原本audioフォルダを選択してください。');}
-async function loadOriginalFolder(list){state.pendingOriginal=fileMap(list);if(state.pendingMeta)activate(state.pendingMeta.entries,state.pendingMeta.info,state.pendingOriginal,true);else tell('原本audioを読み込みました。続けてversions/v2等を選択してください。');}
+async function loadOriginalFolder(list){state.pendingOriginal=fileMap(list);if(state.pendingMeta)activate(state.pendingMeta.entries,state.pendingMeta.info,state.pendingOriginal,true);else tell('原本audioを読み込みました。続けてversions/vNの履歴フォルダを選択してください。');}
 function boot(){for(const [key,label] of CATEGORIES){for(const id of ['categoryFilter','manualCategory']){const opt=document.createElement('option');opt.value=key;opt.textContent=label;byId(id).append(opt);}}
  byId('libraryDir').onchange=async e=>{const list=e.target.files;if(!list?.length)return;if(state.dirty&&!window.confirm('未保存レビューを破棄しますか？')){e.target.value='';return;}
  try{await loadCandidateFolder(list);}catch(err){tell('候補読込中断: '+err.message,true);}finally{e.target.value='';}};
