@@ -150,3 +150,40 @@ def test_main_without_bank_invokes_bootstrap_for_vocals(tmp_path, monkeypatch):
     assert len(seen) == 1
     assert seen[0]["precomputed_turns"] == [(0.0, 4.0, "SPEAKER_00")]
     assert (root / "New_Speaker" / "vocals").is_dir()
+
+
+def test_main_existing_bank_skips_bootstrap(tmp_path, monkeypatch):
+    vocals = tmp_path / "existing.wav"
+    vocals.touch()
+    root = tmp_path / "runs"
+    reference = tmp_path / "ref"
+    reference.mkdir()
+    (reference / "self_reference_bank.npz").write_bytes(b"EXISTING")
+    monkeypatch.setattr(module, "load_config", lambda *_: {})
+    monkeypatch.setattr(module, "load_thresholds", lambda *args: (0.5, 0.3, 1))
+    monkeypatch.setattr(module, "run_dir", lambda *args: root)
+    monkeypatch.setattr(module, "reference_dir", lambda *args: reference)
+    monkeypatch.setattr(module, "project_path", lambda value: Path(value))
+    monkeypatch.setattr(
+        module, "bootstrap_reference_bank",
+        lambda *args: pytest.fail("should not bootstrap existing reference"),
+    )
+    called = []
+    monkeypatch.setattr(module, "classify", lambda *args, **kwargs: called.append(kwargs))
+    monkeypatch.setattr(sys, "argv", ["localvoice.py", "--profile", "Existing", "--vocals", str(vocals)])
+    module.main()
+    assert len(called) == 1
+    assert called[0]["precomputed_turns"] is None
+    assert (reference / "self_reference_bank.npz").read_bytes() == b"EXISTING"
+    assert not (root / "Existing" / "existing" / "bootstrap").exists()
+
+
+def test_preview_requires_confirmed_person_and_never_guesses_label(monkeypatch, tmp_path):
+    monkeypatch.setattr(module.sys, "stdin", type("TTY", (), {"isatty": lambda self: True})())
+    inputs = iter(["SPEAKER_00", "NO", "q"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+    with pytest.raises(RuntimeError, match="canceled"):
+        module.choose_bootstrap_speakers(
+            {"SPEAKER_00": [(0, 5, "SPEAKER_00")] * 3},
+            {"SPEAKER_00": [tmp_path / "a.wav"]},
+        )
