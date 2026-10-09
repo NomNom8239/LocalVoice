@@ -44,7 +44,7 @@ LocalVoice/
 ├── src/localvoice/                 # future: new application modules
 │   ├── __main__.py                 # ONE CLI (python -m localvoice ...)
 │   ├── transcription/             # existing asr-pilot; full ASR deferred
-│   ├── style/                     # planned acoustic expression classifier
+│   ├── style/                     # acoustic AST/CLAP candidate pilot only; full classifier pending
 │   ├── quality/                   # proposed owner for identity/QC/review; create if needed
 │   └── dataset/                   # planned versioned Japanese-category export
 ├── tests/                          # future: tests organized by feature
@@ -63,7 +63,7 @@ LocalVoice/
     └── gradio_outputs_voicedesign/ # upstream runtime output, if generated
 ```
 
-Do not create placeholder directories or files merely to match the diagram. On the active ASR Pilot branch, `src/localvoice/`, `work/` (local), `tests/` and `pyproject.toml` already have concrete roles; `quality/`, `style/`, `dataset/` and final `outputs/datasets/` are **proposed future capabilities**, not claims of implementation.
+Do not create placeholder directories or files merely to match the diagram. On the active ASR Pilot branch, `src/localvoice/`, `work/` (local), `tests/` and `pyproject.toml` already have concrete roles; `quality/`, full style classification, `dataset/` and final `outputs/datasets/` are **proposed future capabilities**. The current `style/pilot.py` is an exploratory model-comparison entry point and does not approve or export any audio.
 
 ## Existing acquisition compatibility: exception, not the new pattern
 
