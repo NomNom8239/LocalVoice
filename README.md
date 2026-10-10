@@ -4,7 +4,7 @@
 
 公式Irodori-TTSのZero-shot VoiceDesignは、独立した `Irodori-TTS/` クローンで動作させます。LocalVoice独自の機能は公式クローンへ追加せず、ユーザーが選んだ参照WAVを手動で指定します。
 
-**初回話者のReference Bankも自動セットアップ対応（話者ラベルの本人確認のみ手動）。** ローカルPythonの実機受入はまだ未実施で、正式QCや多サイト収集E2Eとは別です。
+**初回話者のReference Bank自動セットアップを実装。** Windows全体テスト43件は一度PASSしたものの、実音声受入で無音・混話を検出し、採用方式を個別プレビュー承認へ変更したため、**修正版の回帰テスト・実音声E2Eは未完了**です。
 
 **最初に読む資料：** [ディレクトリ責務・安全規則](docs/PROJECT_LAYOUT.md) ／ [AST一括分類手順](docs/AST_BATCH_RUNBOOK.md) ／ [分類・レビュー履歴の運用](docs/VERSIONED_AUDIO_METADATA.md)
 
@@ -205,29 +205,39 @@ python .\scripts\diarize.py `
 
 ### 新しい話者の初回収集（Reference Bankなしで開始）
 
-**推奨：** 新規profileでは最初から本人WAVを手作業で何十件も準備する必要はありません。`localvoice.py` が Reference Bank の有無を確認し、未作成なら以下を**同じ実行中に続けて処理**します。
-
-1. アーカイブURLを `yt-dlp` で取得（または `--wav` / `--vocals` で既存音声を指定）。
-2. FFmpegでWAVへ変換し、`audio-separator`でVocals抽出（`--vocals` の場合は省略）。
-3. pyannoteで話者候補ごとに分離。**2〜20秒、話者重複なし、無音/クリッピングが少ない**区間だけ抽出し、話者ラベルごと最大3件の短い試聴用WAVを作成。
-4. ターミナルに`SPEAKER_00`などの候補とファイルパスを表示。利用者が **`p SPEAKER_00`で数件試聴→本人の話者ラベルを選ぶ**。同じ本人が複数ラベルに分かれた場合は `SPEAKER_00,SPEAKER_01` のように同時選択可能。**機械が自動的に話者の実名を決定することはない**。
-5. 選んだ話者から全体に分散した最大24クリップを自動抽出し、`build_reference_bank.py`で`self_reference_bank.npz`を生成。**元の長尺音声を繰り返し話者分離せず**、初回の結果を共有してそのまま本人照合 `SELF / REVIEW / OTHER` まで進む。
-6. 必要なら`review_training_audio.py`で確認し、`collect_training_audio.py --dry-run`で素材追加前の確認。完成したBankは次のアーカイブから自動で再利用。
+**推奨経路：** 新規profileはReference Bankの手動準備不要。通常の `localvoice.py --url` から直接、配信取得 → Vocals抽出 → pyannote話者分離 → 代表WAV試聴 → **確認済みの個別WAVだけ**でBank作成 → 本人声分類まで進みます。
 
 ~~~powershell
 cd F:\AIProjects\LocalVoice
 .\.venv\Scripts\python.exe .\scripts\localvoice.py --profile New_Speaker --url "<配信アーカイブURL>"
 ~~~
 
-話者候補が表示されたら、`p SPEAKER_00` などと入力すると`ffplay`で短い音声を再生します。誰が本人か判断したら、該当ラベルをカンマ区切りで入力して`YES`と確認してください。`ffplay`がない場合は表示された試聴用WAVを手動で開けます。
+取得後、`bootstrap/previews/` に話者ラベルごと最大3件ずつ短いWAVを出力。ターミナルで試聴できます。
 
-**試聴候補・選定WAVの場所：** `data/runs/<profile>/<run-name>/bootstrap/previews/` と `.../bootstrap/selected_reference_wavs/`。`data/reference_bank/<profile>/`にBankのNPZ/JSONが作成されます。選定したクリップは**初期の仮Reference Bank**であって、本人確認の最終保証ではありません。提示音声で判断できない場合は `q` で中断して別の配信を使用してください。話者が3区間未満しか取れない場合も中断します。対話型端末が必要です。
+~~~text
+p SPEAKER_00                        # 話者00のプレビューすべてを再生
+p SPEAKER_02_02                     # 話者02の2番目だけ再生
+SPEAKER_00,SPEAKER_01              # 00と01の「表示済みプレビューだけ」を採用
+SPEAKER_02_02,SPEAKER_02_03        # 02の1番目が無音なら、2・3番目だけ採用
+SPEAKER_00,SPEAKER_01,SPEAKER_02_02,SPEAKER_02_03  # 組合せも可
+q                                   # Bank生成せず安全に中断
+~~~
 
-**既存Bankの保全：** `self_reference_bank.npz`がすでにあれば初回生成は実行せず通常モードで収集します。Bank生成段階で既存NPZ/JSONを上書きすることはありません。`--force` は既存runフォルダを削除するため使用せず、途中で停止したら原因を確認し、新しい `--run-name` で再試行してください。原本WAVや過去の分類履歴は削除しません。
+ラベル単位で選択しても、**Bankに入れるのは表示・試聴できた最大3件だけ**で、同じラベルの未試聴の全区間は採用しません。個別クリップIDなら**その1件だけ**を採用します。最低3件の異なる確認済みWAVが必要。指定後に具体的な採用ファイルパスがすべて表示され、すべて本人だけの声であると確認できた場合のみ `YES` を入力します。無音、他人声、混話のWAVは選択しないでください。代表音声の無音・他人声混入が見つかった実機受入を受けて、未試聴クリップの自動採用を禁止しました。
 
-**閾値：** 初回は `config.toml` の既定閾値（または既存の同profile`thresholds.json`）を使用します。自動で「別ラベル＝他人」とみなしてnegative sampleにはしません。同じ人が複数ラベルに割れるためです。本人と他人の音声が明確に分かってから、別途 `calibrate_threshold.py` で調整できます。
+**途中で中断した場合：** 生成済みプレビューを再利用するので、アーカイブの再取得やaudio-separatorの再実行は不要です。最初の実行時に指定した`--run-name`または既定の動画IDを確認し、次で再開します。
 
-**手動の代替ルート：** 特定の配信から候補が取れない場合、従来通り `yt-dlp` → `ffmpeg` → 必要に応じて `diarize.py` → 人間が本人WAV（2〜20秒、最低3件）を `data/reference_bank/<profile>/audio/`へ用意し、次節の `build_reference_bank.py` を実行する方法も使えます。通常はこの手動準備は不要です。
+~~~powershell
+.\.venv\Scripts\python.exe .\scripts\localvoice.py --profile New_Speaker --resume-bootstrap "<元のrun-name>"
+~~~
+
+この方法は既存 `data/runs/<profile>/<run-name>/bootstrap/previews/` を再利用して、既存runの分類結果がない場合に限りBank生成と本人声分類を続行します。**以前の話者分離結果を永続保存していないため、再開時の本人声分類ではpyannoteを1回再実行**します。過去の実行で元から`--vocals`を指定していた場合は、追加で`--resume-vocals "<同じVocals.wavのパス>"`を渡してください。通常の`--url`/`--wav`実行なら保存済み`separated/`のVocalsを自動使用します。
+
+**安全上の制約：** 初回Bankの音声はまだ暫定基準であり、すべての分類結果の本人性や最終QCを保証しません。`self_reference_bank.npz`/`self_reference_bank.json`の不整合や既存Bankは上書きしません。`--force`は既存runを削除するため使わず、再開には`--resume-bootstrap`を使用します。別ラベル＝他人と自動でnegativeにはしません。本人以外の確実なWAVがある場合だけ、`calibrate_threshold.py`で別途閾値校正します。
+
+プレビュー: `data/runs/<profile>/<run-name>/bootstrap/previews/`。実際にBankに渡したファイル: `bootstrap/selected_reference_wavs/`。Bank: `data/reference_bank/<profile>/`。この段階では学習用素材の正式承認やAST分類は行わず、従来どおり`review_training_audio.py`→`collect_training_audio.py --dry-run`で結果を確認します。
+
+**代替ルート：** 音声が短すぎたり、試聴候補が十分に得られない場合に限り、`yt-dlp`/`ffmpeg`/`diarize.py`で本人WAVを手動収集し、次節の生成コマンドでBankを作成できます。
 
 ### Reference Bankを手動生成する場合（代替・既存Bankは上書き注意）
 
@@ -283,7 +293,7 @@ python .\scripts\localvoice.py `
   --vocals ".\path\to\Vocals.wav"
 ```
 
-**前提：** Python環境・FFmpeg・audio-separator・pyannote等が必要です（URL取得時はyt-dlpも必要）。**Bankがないprofileでは初回セットアップが自動起動**し、話者候補の試聴と本人ラベルの選択だけを求めます。Bankがあるprofileは通常の本人照合へ直行します。出力は話者ごとに分割した候補クリップであり、AST日本語カテゴリ分類は別工程です。
+**前提：** Python環境・FFmpeg・audio-separator・pyannote等が必要です（URL取得時はyt-dlpも必要）。**Bankがないprofileでは初回セットアップが自動起動**し、試聴済みの本人クリップだけを採用する操作を求めます。Bankがあるprofileは通常の本人照合へ直行します。出力は話者ごとに分割した候補クリップであり、AST日本語カテゴリ分類は別工程です。
 
 分類結果:
 

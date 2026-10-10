@@ -68,7 +68,7 @@ def test_bootstrap_uses_previewed_speaker_and_staged_references(tmp_path, monkey
         called.append(args)
         assert args[-4:] == ["--profile", "Test_Speaker", "--source", str(output / "bootstrap" / "selected_reference_wavs")]
         assert not (root / "self_reference_bank.npz").exists()
-        assert len(list((output / "bootstrap" / "selected_reference_wavs").glob("*.wav"))) == 6
+        assert len(list((output / "bootstrap" / "selected_reference_wavs").glob("*.wav"))) == 3
         root.mkdir(parents=True)
         (root / "self_reference_bank.npz").write_bytes(b"FAKE")
         (root / "self_reference_bank.json").write_text("{}")
@@ -79,7 +79,7 @@ def test_bootstrap_uses_previewed_speaker_and_staged_references(tmp_path, monkey
     assert returned == turns
     assert len(called) == 1
     assert len(list((output / "bootstrap" / "previews").glob("*.wav"))) == 5
-    assert len(list((output / "bootstrap" / "selected_reference_wavs").glob("*.wav"))) == 6
+    assert len(list((output / "bootstrap" / "selected_reference_wavs").glob("*.wav"))) == 3
 
 
 def test_existing_bank_not_overwritten(tmp_path, monkeypatch):
@@ -98,7 +98,12 @@ def test_bootstrap_requires_confirmed_identity_and_supports_multiple_labels(monk
     monkeypatch.setattr(module.sys, "stdin", type("TTY", (), {"isatty": lambda self: True})())
     responses = iter(["SPEAKER_00,SPEAKER_01", "YES"])
     monkeypatch.setattr("builtins.input", lambda _: next(responses))
-    paths = {"SPEAKER_00": [tmp_path / "a.wav"], "SPEAKER_01": [tmp_path / "b.wav"]}
+    for name in ("a.wav", "b.wav", "c.wav"):
+        (tmp_path / name).touch()
+    paths = {
+        "SPEAKER_00": [tmp_path / "a.wav", tmp_path / "c.wav"],
+        "SPEAKER_01": [tmp_path / "b.wav"],
+    }
     sources = {
         "SPEAKER_00": [(1, 5, "SPEAKER_00"), (10, 14, "SPEAKER_00")],
         "SPEAKER_01": [(20, 24, "SPEAKER_01")],
@@ -185,9 +190,12 @@ def test_preview_requires_confirmed_person_and_never_guesses_label(monkeypatch, 
     inputs = iter(["SPEAKER_00", "NO", "q"])
     monkeypatch.setattr("builtins.input", lambda _: next(inputs))
     with pytest.raises(RuntimeError, match="canceled"):
+        wavs = [tmp_path / f"clip{i}.wav" for i in range(3)]
+        for wav in wavs:
+            wav.touch()
         module.choose_bootstrap_speakers(
             {"SPEAKER_00": [(0, 5, "SPEAKER_00")] * 3},
-            {"SPEAKER_00": [tmp_path / "a.wav"]},
+            {"SPEAKER_00": wavs},
         )
 
 
@@ -208,3 +216,120 @@ def test_main_incomplete_bank_refuses_classification(tmp_path, monkeypatch):
         module.main()
     assert (ref / "self_reference_bank.npz").read_bytes() == b"PARTIAL"
     assert not (tmp_path / "runs").exists()
+
+
+def test_mixed_speaker_samples_select_exact_human_confirmed_preview_files(tmp_path):
+    root = tmp_path / "bootstrap" / "previews"
+    root.mkdir(parents=True)
+    previews = {}
+    for speaker in ["SPEAKER_00", "SPEAKER_01", "SPEAKER_02", "SPEAKER_03"]:
+        files = []
+        for index in (1, 2, 3):
+            path = root / f"{speaker}_{index:02d}.wav"
+            path.write_bytes(f"{speaker}: {index}".encode())
+            files.append(path)
+        previews[speaker] = files
+
+    approved = module.resolve_bootstrap_preview_selection(
+        ["SPEAKER_00", "SPEAKER_01", "SPEAKER_02_02", "SPEAKER_02_03"],
+        previews,
+    )
+    assert len(approved) == 8
+    assert set(approved) == (
+        set(previews["SPEAKER_00"])
+        | set(previews["SPEAKER_01"])
+        | set(previews["SPEAKER_02"][1:])
+    )
+    assert previews["SPEAKER_02"][0] not in approved
+    assert not any(x in approved for x in previews["SPEAKER_03"])
+    with pytest.raises(ValueError, match="Unknown preview"):
+        module.resolve_bootstrap_preview_selection(["SPEAKER_04"], previews)
+
+
+def test_preview_only_reference_generation_does_not_promote_unreviewed_turns(
+    tmp_path, monkeypatch,
+):
+    profile = "Fresh"
+    run_root = tmp_path / "run"
+    preview_root = run_root / "bootstrap" / "previews"
+    preview_root.mkdir(parents=True)
+    speaker_files = []
+    for i in (1, 2, 3):
+        file = preview_root / f"SPEAKER_00_{i:02d}.wav"
+        file.write_bytes(f"approved-{i}".encode())
+        speaker_files.append(file)
+    another = preview_root / "SPEAKER_01_01.wav"
+    another.write_bytes(b"other-speaker")
+    root = tmp_path / "ref"
+    monkeypatch.setattr(module, "reference_dir", lambda *_: root)
+    monkeypatch.setattr(
+        module, "choose_bootstrap_speakers",
+        lambda _candidates, _previews: ["SPEAKER_00"],
+    )
+
+    def fake_run(args, **kwargs):
+        stage = Path(args[-1])
+        staged = sorted(stage.glob("*.wav"))
+        assert len(staged) == 3
+        assert sorted(p.read_bytes() for p in staged) == sorted(p.read_bytes() for p in speaker_files)
+        root.mkdir()
+        (root / "self_reference_bank.npz").write_bytes(b"synthetic")
+        (root / "self_reference_bank.json").write_text("{}")
+        return ""
+
+    monkeypatch.setattr(module, "run", fake_run)
+    module.build_approved_bootstrap_bank(
+        {}, profile, run_root,
+        {"SPEAKER_00": speaker_files, "SPEAKER_01": [another]},
+    )
+
+
+def test_resume_bootstrap_uses_existing_previews_and_vocals_without_separator(
+    tmp_path, monkeypatch,
+):
+    output = tmp_path / "runs" / "Fresh" / "previous_run"
+    preview_root = output / "bootstrap" / "previews"
+    preview_root.mkdir(parents=True)
+    for i in (1, 2, 3):
+        (preview_root / f"SPEAKER_00_{i:02d}.wav").touch()
+    separated = output / "separated"
+    separated.mkdir()
+    vocals = separated / "audio_Vocals.wav"
+    vocals.touch()
+    ref = tmp_path / "ref"
+    monkeypatch.setattr(module, "reference_dir", lambda *_: ref)
+    seen = []
+    monkeypatch.setattr(
+        module, "build_approved_bootstrap_bank",
+        lambda _config, _profile, _output, preview: seen.append(("bank", preview)),
+    )
+    monkeypatch.setattr(
+        module, "classify",
+        lambda _config, _profile, source, _output, *_: seen.append(("classify", source)),
+    )
+    module.resume_bootstrap({}, "Fresh", output, None, 0.7, 0.4, 3)
+    assert [entry[0] for entry in seen] == ["bank", "classify"]
+    assert len(seen[0][1]["SPEAKER_00"]) == 3
+    assert seen[1][1] == vocals
+
+
+def test_resume_refuses_previous_classification_without_touching_it(tmp_path, monkeypatch):
+    output = tmp_path / "run"
+    output.mkdir()
+    manifest = output / "classification.tsv"
+    manifest.write_bytes(b"ORIGINAL")
+    monkeypatch.setattr(module, "reference_dir", lambda *_: tmp_path / "bank")
+    with pytest.raises(RuntimeError, match="already classified"):
+        module.resume_bootstrap({}, "Fresh", output, None, 0.7, 0.4, 3)
+    assert manifest.read_bytes() == b"ORIGINAL"
+
+
+def test_resume_previews_loader_preserves_speaker_boundaries(tmp_path):
+    base = tmp_path / "run" / "bootstrap" / "previews"
+    base.mkdir(parents=True)
+    for name in ["SPEAKER_00_01.wav", "SPEAKER_01_01.wav", "SPEAKER_02_02.wav"]:
+        (base / name).touch()
+    previews = module.existing_bootstrap_previews(tmp_path / "run")
+    assert {key: len(value) for key, value in previews.items()} == {
+        "SPEAKER_00": 1, "SPEAKER_01": 1, "SPEAKER_02": 1,
+    }

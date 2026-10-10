@@ -75,23 +75,33 @@ second acquisition CLI or copy LocalVoice code into upstream `Irodori-TTS/`.
 - **Bank present:** legacy acquire → Vocals separation → diarization → speaker
   embedding comparison and SELF/REVIEW/OTHER flow continues.
 - **Bank absent:** download / Vocals first, diarization once, create speaker
-  preview snippets inside the **new run only**, ask the user to listen and select
-  the target speaker label(s), produce up to 24 screened 2–20-second candidate
-  clips, call the existing `scripts/build_reference_bank.py`, then classify
-  using the same diarization evidence. Do not assume the longest/loudest
-  speaker or a different diarization label is another human.
+  preview snippets inside the **new run only**, ask the user to confirm
+  the **exact preview WAVs** (up to 3 per label, optionally individual clip
+  IDs) and reject silent, other-person, or mixed previews. Only these
+  human-approved preview files can feed `scripts/build_reference_bank.py`;
+  no unseen archive clips are promoted. After Bank creation, classification
+  uses the same diarization evidence during an uninterrupted initial run.
+  Do not assume the longest/loudest speaker or a different label is another
+  human.
 - The run stores `bootstrap/previews/` and `bootstrap/selected_reference_wavs/`.
   Bank NPZ/JSON go to `data/reference_bank/<profile>/`. The input source,
   existing run directories and established Bank are never overwritten in this
   workflow. `--force` retains its **legacy destructive run-dir behavior**
   and must not be used to recover an interrupted bootstrap casually.
+  The safe `--resume-bootstrap <old-run-name>` path reuses the preview WAVs
+  in an interrupted run without re-downloading or re-separating audio; the
+  renewed classification runs diarization once because the previous turns
+  were not serialized.
 - Preliminary automated quality gates do not replace speaker identity
   confirmation, final recording quality QC, or human dataset approval.
 - **Runtime acceptance pending:** tests added, but the actual user Windows
   E2E and existing Ui_Shigure reference-bank regression have not been run.
 - Cross-site yt-dlp source-ID namespacing, fully automated new archive → AST
   incremental integration, and bootstrap interruption resume are separate
-  LV-R07 follow-ups, not silently claimed here.
+  LV-R07 follow-ups, not silently claimed here. The exact-preview
+  approval and old-run resume correction were made after real acceptance
+  found SPEAKER_02 with silence and SPEAKER_03 with other/mixed voices.
+  The corrected code is awaiting new Windows regression and real E2E.
 
 See [operational design and acceptance](REFERENCE_BANK_BOOTSTRAP.md).
 
